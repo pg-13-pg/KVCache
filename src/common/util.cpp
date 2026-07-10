@@ -5,19 +5,19 @@
 #include <ctime>
 #include <iomanip>
 
-void myAssert(bool condition, std::string message) {
+void myAssert(bool condition, std::string message) {  //如果条件不满足，输出错误信息并终止程序
   if (!condition) {
     std::cerr << "Error: " << message << std::endl;
-    std::exit(EXIT_FAILURE);
+    std::exit(EXIT_FAILURE);  //进程退出，返回一个非零值表示异常终止
   }
 }
 
 std::chrono::_V2::system_clock::time_point now() { return std::chrono::high_resolution_clock::now(); }
 
-std::chrono::milliseconds getRandomizedElectionTimeout() {
-  std::random_device rd;
-  std::mt19937 rng(rd());
-  std::uniform_int_distribution<int> dist(minRandomizedElectionTime, maxRandomizedElectionTime);
+std::chrono::milliseconds getRandomizedElectionTimeout() {  //生成一个随机的选举超时时间，范围在
+  std::random_device rd;  //随机种子
+  std::mt19937 rng(rd()); //伪随机数生成器
+  std::uniform_int_distribution<int> dist(minRandomizedElectionTime, maxRandomizedElectionTime);//300-500ms
 
   return std::chrono::milliseconds(dist(rng));
 }
@@ -52,7 +52,7 @@ bool isReleasePort(unsigned short usPort) {
   return true;
 }
 
-void DPrintf(const char *format, ...) {
+void DPrintf(const char *format, ...) {  //
   if (Debug) {
     // 获取当前的日期，然后取日志信息，写入相应的日志文件当中 a+
     time_t now = time(nullptr);

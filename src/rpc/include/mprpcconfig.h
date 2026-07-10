@@ -1,9 +1,7 @@
 #pragma once
-
 #include <string>
 #include <unordered_map>
-
-// rpcserverip   rpcserverport    zookeeperip   zookeeperport
+// 读取 RPC 配置文件，例如 node0ip/node0port、node1ip/node1port 等配置项。
 // 框架读取配置文件类
 class MprpcConfig {
  public:

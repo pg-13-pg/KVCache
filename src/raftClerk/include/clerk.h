@@ -1,7 +1,3 @@
-//
-// Created by swx on 23-6-4.
-//
-
 #ifndef SKIP_LIST_ON_RAFT_CLERK_H
 #define SKIP_LIST_ON_RAFT_CLERK_H
 #include <arpa/inet.h>
@@ -17,16 +13,14 @@
 #include "mprpcconfig.h"
 class Clerk {
  private:
-  std::vector<std::shared_ptr<raftServerRpcUtil>>
-      m_servers;  //保存所有raft节点的fd //todo：全部初始化为-1，表示没有连接上
+  std::vector<std::shared_ptr<raftServerRpcUtil>>m_servers; //// 保存所有 KVServer 节点的 RPC 客户端 //todo：全部初始化为-1，表示没有连接上
   std::string m_clientId;
   int m_requestId;
-  int m_recentLeaderId;  //只是有可能是领导
-
+  int m_recentLeaderId;  //记录最近一次成功联系的 Leader
+  //用于返回随机的clientId
   std::string Uuid() {
     return std::to_string(rand()) + std::to_string(rand()) + std::to_string(rand()) + std::to_string(rand());
-  }  //用于返回随机的clientId
-
+  }  
   //    MakeClerk  todo
   void PutAppend(std::string key, std::string value, std::string op);
 
@@ -34,7 +28,6 @@ class Clerk {
   //对外暴露的三个功能和初始化
   void Init(std::string configFileName);
   std::string Get(std::string key);
-
   void Put(std::string key, std::string value);
   void Append(std::string key, std::string value);
 

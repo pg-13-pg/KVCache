@@ -1,9 +1,30 @@
 
-!bin/test.conf
-.idea
-bin
-cmake-build-debug
-lib
+# IDE / editor local settings
+.idea/
+.vscode/
 
+# Build outputs
+cmake-build-debug/
+build/
+lib/
+
+bin/*
+!bin/test.conf
+
+# Local runtime config
+/test.conf
+
+# Runtime persistence files
+raftstatePersist*.txt
+snapshotPersist*.txt
+bin/raftstatePersist*.txt
+bin/snapshotPersist*.txt
+
+# Compiled artifacts
 *.out
 *.a
+*.o
+*.so
+*.dylib
+*.dll
+*.exe

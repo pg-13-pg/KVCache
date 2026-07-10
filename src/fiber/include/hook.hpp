@@ -17,10 +17,11 @@ bool is_hook_enable();
 void set_hook_enable(bool flag);
 }  // namespace monsoon
 
-extern "C" {
+//extern "C" 是为了禁止 C++ 名字修饰，让 hook 函数的符号名保持 read/write/connect，才能拦截 libc 同名函数。
+extern "C" { 
 // sleep
-typedef unsigned int (*sleep_fun)(unsigned int seconds);
-extern sleep_fun sleep_f;
+typedef unsigned int (*sleep_fun)(unsigned int seconds);  //函数指针类型别名
+extern sleep_fun sleep_f;  //函数指针变量，指向原始的 sleep 函数，外部定义，全局一份
 
 typedef int (*usleep_fun)(useconds_t usec);
 extern usleep_fun usleep_f;

@@ -1,6 +1,4 @@
-//
-// Created by swx on 23-5-30.
-//
+
 #include "Persister.h"
 #include "util.h"
 
@@ -13,6 +11,7 @@ void Persister::Save(const std::string raftstate, const std::string snapshot) {
   m_snapshotOutStream << snapshot;
 }
 
+// 从本地文件读取snapshot
 std::string Persister::ReadSnapshot() {
   std::lock_guard<std::mutex> lg(m_mtx);
   if (m_snapshotOutStream.is_open()) {
@@ -53,10 +52,10 @@ std::string Persister::ReadRaftState() {
   if (!ifs.good()) {
     return "";
   }
-  std::string snapshot;
-  ifs >> snapshot;
+  std::string  raftState;
+  ifs >> raftState;
   ifs.close();
-  return snapshot;
+  return raftState;
 }
 
 Persister::Persister(const int me)

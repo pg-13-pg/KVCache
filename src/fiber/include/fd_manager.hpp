@@ -8,7 +8,7 @@
 #include "thread.hpp"
 
 namespace monsoon {
-// 文件句柄上下文，管理文件句柄类型，阻塞，关闭，读写超时
+// 文件句柄上下文，管理文件句柄类型，阻塞，关闭，读写超时  ，（hook层使用）
 class FdCtx : public std::enable_shared_from_this<FdCtx> {
  public:
   typedef std::shared_ptr<FdCtx> ptr;
@@ -54,6 +54,7 @@ class FdCtx : public std::enable_shared_from_this<FdCtx> {
   /// 写超时时间毫秒
   uint64_t m_sendTimeout;
 };
+
 // 文件句柄管理
 class FdManager {
  public:

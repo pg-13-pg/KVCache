@@ -1,6 +1,5 @@
-//
-// Created by swx on 23-12-28.
-//
+//raft集群通信
+//raft集群中每个节点都要维护一个rpc连接，即MprpcChannel，来和其他节点进行通信，发送请求和接收响应
 
 #ifndef RAFTRPC_H
 #define RAFTRPC_H
@@ -11,7 +10,7 @@
 // 对于一个raft节点来说，对于任意其他的节点都要维护一个rpc连接，即MprpcChannel
 class RaftRpcUtil {
  private:
-  raftRpcProctoc::raftRpc_Stub *stub_;
+  raftRpcProctoc::raftRpc_Stub *stub_;    // raftRpcProctoc
 
  public:
   //主动调用其他节点的三个方法,可以按照mit6824来调用，但是别的节点调用自己的好像就不行了，要继承protoc提供的service类才行
@@ -29,3 +28,21 @@ class RaftRpcUtil {
 };
 
 #endif  // RAFTRPC_H
+
+
+// node1 本地:
+// RaftRpcUtil::InstallSnapshot(...)
+//     |
+//     v
+// stub_->InstallSnapshot(&controller, args, response, nullptr)
+//     |
+//     v
+// RPC 框架通过 MprpcChannel 发送网络请求到 node2  src/rpc/...
+//     |
+//     v
+// node2 本地:
+// Raft::InstallSnapshot(controller, request, response, done)
+//     |
+//     v
+// node2 本地真正处理:
+// Raft::InstallSnapshot(request, response)

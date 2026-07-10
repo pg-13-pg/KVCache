@@ -1,6 +1,4 @@
-//
-// Created by swx on 23-12-28.
-//
+//启动 Raft KV 服务端集群的示例程序。
 #include <iostream>
 #include "raft.h"
 // #include "kvServer.h"

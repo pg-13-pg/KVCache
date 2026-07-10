@@ -1,7 +1,4 @@
-//
-// Created by swx on 23-12-28.
-//
-
+//raft节点间通信的 rpc封装
 #include "raftRpcUtil.h"
 
 #include <mprpcchannel.h>

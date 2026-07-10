@@ -14,18 +14,17 @@
 #include "utils.hpp"
 
 namespace monsoon {
-// 调度任务
+// 调度任务包装器
 class SchedulerTask {
  public:
   friend class Scheduler;
   SchedulerTask() { thread_ = -1; }
   SchedulerTask(Fiber::ptr f, int t) : fiber_(f), thread_(t) {}
-  SchedulerTask(Fiber::ptr *f, int t) {
+  SchedulerTask(Fiber::ptr *f, int t) {  // 传入的是Fiber::ptr的指针，方便直接交换
     fiber_.swap(*f);
     thread_ = t;
   }
   SchedulerTask(std::function<void()> f, int t) {
-    // std::cout << "function task" << std::endl;
     cb_ = f;
     thread_ = t;
   }
@@ -42,7 +41,7 @@ class SchedulerTask {
   int thread_;
 };
 
-// N->M协程调度器
+// N->M协程调度器  管理线程池执行任务 
 class Scheduler {
  public:
   typedef std::shared_ptr<Scheduler> ptr;
@@ -66,22 +65,13 @@ class Scheduler {
     bool isNeedTickle = false;
     {
       Mutex::Lock lock(mutex_);
-      isNeedTickle = schedulerNoLock(task, thread);
-      // std::cout << "isNeedTickle: " << isNeedTickle << std::endl;
+      isNeedTickle = schedulerNoLock(task, thread);  // 无锁下添加调度任务，返回是否需要唤醒idle协程
     }
-
     if (isNeedTickle) {
       tickle();  // 唤醒idle协程
     }
-    // log
-    // std::string tp = "[Callback Func]";
-    // if (boost::typeindex::type_id_with_cvr<TaskType>().pretty_name() != "void (*)()")
-    // {
-    //     tp = "[Fiber]";
-    // }
-    // std::cout << "[scheduler] add scheduler task: " << tp << " success" << std::endl;
-    // std::cout << "[scheduler] add scheduler task success" << std::endl;
   }
+  
   // 启动调度器
   void start();
   // 停止调度器,等待所有任务结束
@@ -112,12 +102,11 @@ class Scheduler {
     bool isNeedTickle = tasks_.empty();
     SchedulerTask task(t, thread);
     if (task.fiber_ || task.cb_) {
-      // std::cout << "有效task" << std::endl;
       tasks_.push_back(task);
     }
-    // std::cout << "scheduler noblock: isNeedTickle = " << isNeedTickle << std::endl;
     return isNeedTickle;
   }
+
   // 调度器名称
   std::string name_;
   // 互斥锁
@@ -135,7 +124,7 @@ class Scheduler {
   // IDLE线程数
   std::atomic<size_t> idleThreadCnt_ = {0};
   // 是否是use caller
-  bool isUseCaller_;
+  bool isUseCaller_; //caller线程（创建Scheduler的线程）也作为工作线程参与处理任务
   // use caller= true,调度器所在线程的调度协程
   Fiber::ptr rootFiber_;
   // use caller = true,调度器协程所在线程的id

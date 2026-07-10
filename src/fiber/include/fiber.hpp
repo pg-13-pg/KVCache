@@ -1,6 +1,5 @@
 #ifndef __MONSOON_FIBER_H__
 #define __MONSOON_FIBER_H__
-
 #include <stdio.h>
 #include <ucontext.h>
 #include <unistd.h>
@@ -10,17 +9,14 @@
 #include "utils.hpp"
 
 namespace monsoon {
-class Fiber : public std::enable_shared_from_this<Fiber> {
+class Fiber : public std::enable_shared_from_this<Fiber> {//Fiber对象内部可以安全地拿到管理自己的shared_ptr。
  public:
   typedef std::shared_ptr<Fiber> ptr;
   // Fiber状态机
   enum State {
-    // 就绪态，刚创建后者yield后状态
-    READY,
-    // 运行态，resume之后的状态
-    RUNNING,
-    // 结束态，协程的回调函数执行完之后的状态
-    TERM,
+    READY,// 就绪态，刚创建后者yield后状态
+    RUNNING, // 运行态，resume之后的状态
+    TERM, // 结束态，协程的回调函数执行完之后的状态
   };
 
  private:

@@ -17,7 +17,6 @@ int main(int argc, char **argv)
     std::vector<monsoon::Thread::ptr> tpool;
     for (int i = 0; i < 5; i++)
     {
-        // std::cout<<"haha";
         monsoon::Thread::ptr t(new monsoon::Thread(&func1, "name_" + std::to_string(i)));
         tpool.push_back(t);
     }
@@ -29,3 +28,4 @@ int main(int argc, char **argv)
 
     std::cout << "-----thread_test end-----" << std::endl;
 }
+//创建 5 个线程，每个线程执行 func1，打印线程名字和线程 ID，然后主线程等待这 5 个线程全部结束

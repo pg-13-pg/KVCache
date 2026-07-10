@@ -10,7 +10,7 @@ Thread::Thread(std::function<void()> cb, const std::string &name = "UNKNOW") : c
   if (name.empty()) {
     name_ = "UNKNOW";
   }
-
+  //thread_是pthread_t类型，表示线程的ID，Thread::run是线程的入口函数，this是传递给线程的参数
   int rt = pthread_create(&thread_, nullptr, &Thread::run, this);
   if (rt) {
     std::cout << "pthread_create error,name:" << name_ << std::endl;
@@ -19,7 +19,7 @@ Thread::Thread(std::function<void()> cb, const std::string &name = "UNKNOW") : c
 }
 
 void *Thread::run(void *arg) {
-  Thread *thread = (Thread *)arg;
+  Thread *thread = (Thread *)arg;  //arg ：this
   cur_thread = thread;
   cur_thread_name = thread->name_;
   thread->id_ = monsoon::GetThreadId();
@@ -28,7 +28,6 @@ void *Thread::run(void *arg) {
   std::function<void()> cb;
   cb.swap(thread->cb_);
   // 启动回调函数
-  // std::cout << "begin callback " << std::endl;
   cb();
   return 0;
 }

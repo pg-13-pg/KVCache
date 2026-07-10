@@ -1,17 +1,5 @@
-//
-// Created by swx on 24-1-5.
-//
-
 #ifndef SKIPLIST_H
 #define SKIPLIST_H
-/* ************************************************************************
-> File Name:     skiplist.h
-> Author:        程序员Carl
-> 微信公众号:    代码随想录
-> Created Time:  Sun Dec  2 19:04:26 2018
-> Description:
- ************************************************************************/
-
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -20,7 +8,6 @@
 #include <mutex>
 
 #define STORE_FILE "store/dumpFile"
-
 static std::string delimiter = ":";
 
 // Class template to implement node
@@ -255,16 +242,13 @@ std::string SkipList<K, V>::dump_file() {
   SkipListDump<K, V> dumper;
   while (node != nullptr) {
     dumper.insert(*node);
-    // _file_writer << node->get_key() << ":" << node->get_value() << "\n";
-    // std::cout << node->get_key() << ":" << node->get_value() << ";\n";
     node = node->forward[0];
   }
   std::stringstream ss;
   boost::archive::text_oarchive oa(ss);
   oa << dumper;
   return ss.str();
-  // _file_writer.flush();
-  // _file_writer.close();
+
 }
 
 // Load data from disk

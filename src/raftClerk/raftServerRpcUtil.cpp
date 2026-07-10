@@ -1,15 +1,10 @@
-//
-// Created by swx on 24-1-4.
-//
+//客户端和kvserver通信的rpc封装
+// 这是 Clerk 调用 KVServer 的 RPC 客户端封装，只包含 caller 逻辑。
+// callee 逻辑在 KvServer 里实现，并通过 RpcProvider::NotifyService(this) 注册。
+// Raft 节点之间的 RPC 使用另一套 RaftRpcUtil。
 #include "raftServerRpcUtil.h"
-
-// kvserver不同于raft节点之间，kvserver的rpc是用于clerk向kvserver调用，不会被调用，因此只用写caller功能，不用写callee功能
-//先开启服务器，再尝试连接其他的节点，中间给一个间隔时间，等待其他的rpc服务器节点启动
 raftServerRpcUtil::raftServerRpcUtil(std::string ip, short port) {
-  //*********************************************  */
-  // 接收rpc设置
-  //*********************************************  */
-  //发送rpc设置
+ 
   stub = new raftKVRpcProctoc::kvServerRpc_Stub(new MprpcChannel(ip, port, false));
 }
 

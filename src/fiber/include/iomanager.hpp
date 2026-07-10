@@ -9,20 +9,21 @@
 
 namespace monsoon {
 enum Event {
-  NONE = 0x0,
-  READ = 0x1,
-  WRITE = 0x4,
+  NONE = 0x0,  //位掩码枚举 ，可以组合使用表示多个事件
+  READ = 0x1,  // 等于 EPOLLIN
+  WRITE = 0x4, // 等于 EPOLLOUT
 };
 
+// 事件上下文 READ WRITE
 struct EventContext {
   Scheduler *scheduler = nullptr;
   Fiber::ptr fiber;
   std::function<void()> cb;
 };
 
+//FdContext 表示一个 fd 的全部 IO 事件。
 class FdContext {
   friend class IOManager;
-
  public:
   // 获取事件上下文
   EventContext &getEveContext(Event event);
@@ -39,6 +40,7 @@ class FdContext {
   Mutex mutex;
 };
 
+//
 class IOManager : public Scheduler, public TimerManager {
  public:
   typedef std::shared_ptr<IOManager> ptr;
@@ -69,12 +71,12 @@ class IOManager : public Scheduler, public TimerManager {
   void contextResize(size_t size);
 
  private:
-  int epfd_ = 0;
-  int tickleFds_[2];
+  int epfd_ = 0;   //epoll文件描述符
+  int tickleFds_[2];  //用于唤醒 epoll_wait 中阻塞线程的管道。
   // 正在等待执行的IO事件数量
   std::atomic<size_t> pendingEventCnt_ = {0};
   RWMutex mutex_;
-  std::vector<FdContext *> fdContexts_;
+  std::vector<FdContext *> fdContexts_;  //fd上下文集合，fd作为索引，fdContext作为值
 };
 }  // namespace monsoon
 

@@ -7,14 +7,15 @@
 #include <iostream>
 #include <stack>
 #include "monsoon.h"
+// 用 IOManager 把 epoll 事件和协程调度结合起来：监听 socket 可读时 accept 新连接，
+//客户端 socket 可读时 recv 数据并 echo 回去。
 
 static int listen_sock = -1;
 
 void test_accept();
-
-// task
+//重新注册事件
 void watch_io_read() { monsoon::IOManager::GetThis()->addEvent(listen_sock, monsoon::READ, test_accept); }
-
+//当 listen_sock 可读时，IOManager 会调用这个函数
 void test_accept() {
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
@@ -45,10 +46,10 @@ void test_accept() {
   monsoon::IOManager::GetThis()->scheduler(watch_io_read);
 }
 
+//
 void test_iomanager() {
   int port = 8080;
   struct sockaddr_in svr_addr;
-  // socklen_t cli_len = sizeof(cli_addr);
   listen_sock = socket(AF_INET, SOCK_STREAM, 0);
   if (listen_sock < 0) {
     std::cout << "creating listen socket error" << std::endl;

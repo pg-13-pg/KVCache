@@ -20,12 +20,17 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 # 目前可能存在路径污染的问题，需要进一步解决
 include_directories(${PROJECT_SOURCE_DIR}/src/common/include)
 include_directories(${PROJECT_SOURCE_DIR}/src/fiber/include)
+include_directories(${PROJECT_SOURCE_DIR}/src/rpc)
 include_directories(${PROJECT_SOURCE_DIR}/src/rpc/include)
 include_directories(${PROJECT_SOURCE_DIR}/example)
 include_directories(${PROJECT_SOURCE_DIR}/src/raftCore/include)
-include_directories(${PROJECT_SOURCE_DIR}/src/raftRpcPro/include)
+include_directories(${PROJECT_SOURCE_DIR}/src/raftRpcPro)
 include_directories(${PROJECT_SOURCE_DIR}/src/raftClerk/include)
 include_directories(${PROJECT_SOURCE_DIR}/src/skipList/include)
+
+# protobuf和muduo已安装到系统 /usr/local
+include_directories(/usr/local/include)
+link_directories(/usr/local/lib)
 
 
 # 设置项目库文件搜索路径 -L
@@ -37,7 +42,7 @@ add_subdirectory(src)
 add_subdirectory(example)
 
 add_library(skip_list_on_raft STATIC  ${src_rpc} ${src_fiber} ${rpc_example} ${raftsource} ${src_raftCore} ${src_raftRpcPro})
-target_link_libraries(skip_list_on_raft muduo_net muduo_base pthread dl)
+target_link_libraries(skip_list_on_raft muduo_net muduo_base pthread dl protobuf)
 # 添加格式化目标 start
 # from : https://blog.csdn.net/guotianqing/article/details/121661067
 

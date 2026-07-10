@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package fixbug;  //所在的命名空间
 
-option cc_generic_services = true;  //开启桩stub服务
+option cc_generic_services = true;  //开启stub服务
 
 message ResultCode
 {
@@ -10,15 +10,15 @@ message ResultCode
     bytes errmsg = 2;
 }
 
-message GetFriendsListRequest  //请求，响应
+message GetFriendsListRequest  //请求
 {
     uint32 userid = 1;
 }
 
-message GetFriendsListResponse  //请求，响应
+message GetFriendsListResponse  //响应
 {
     ResultCode result = 1;
-    repeated bytes friends = 2;
+    repeated bytes friends = 2;  //bytes 类型的列表
 }
 
 // 好友模块

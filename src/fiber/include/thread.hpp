@@ -26,15 +26,15 @@ class Thread {
   static void SetName(const std::string &name);
 
  private:
-  Thread(const Thread &) = delete;
-  Thread(const Thread &&) = delete;
-  Thread operator=(const Thread &) = delete;
+  Thread(const Thread &) = delete;   //禁止拷贝构造函数，防止线程对象被复制
+  Thread(const Thread &&) = delete;  //禁止移动构造函数，防止线程对象被移动
+  Thread operator=(const Thread &) = delete; //禁止赋值运算符，防止线程对象被复制
 
   static void *run(void *args);
 
  private:
-  pid_t id_;
-  pthread_t thread_;
+  pid_t id_;   //Linux 系统层面的线程 ID
+  pthread_t thread_;  // POSIX 线程 ID，pthread 库层面的线程句柄
   std::function<void()> cb_;
   std::string name_;
 };

@@ -4,7 +4,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "monsoon.h"
-
+//hook + IOManager：让 sleep / connect / send / recv 这些阻塞函数，在协程环境里变成“只挂起当前协程，不阻塞整个线程”。
 const std::string LOG_HEAD = "[TASK] ";
 
 void test_sleep() {
@@ -70,8 +70,7 @@ void test_sock() {
 }
 
 int main() {
-  // monsoon::IOManager iom;
+  // monsoon::IOManager iom; //测试connect、send、recv这些阻塞函数在协程环境里变成“只挂起当前协程，不阻塞整个线程”。
   // iom.scheduler(test_sock);
-
-  test_sleep();
+  test_sleep();  //测试sleep函数在协程环境里变成“只挂起当前协程，不阻塞整个线程”。
 }

@@ -1,5 +1,4 @@
 #include "mprpcconfig.h"
-
 #include <iostream>
 #include <string>
 
@@ -12,26 +11,22 @@ void MprpcConfig::LoadConfigFile(const char *config_file) {
   }
 
   // 1.注释   2.正确的配置项 =    3.去掉开头的多余的空格
-  while (!feof(pf)) {
+  while (!feof(pf)) {  //判断文件指针 pf 是否已经到达文件末尾 EOF
     char buf[512] = {0};
     fgets(buf, 512, pf);
-
     // 去掉字符串前面多余的空格
     std::string read_buf(buf);
     Trim(read_buf);
-
     // 判断#的注释
     if (read_buf[0] == '#' || read_buf.empty()) {
       continue;
     }
-
     // 解析配置项
     int idx = read_buf.find('=');
     if (idx == -1) {
       // 配置项不合法
       continue;
     }
-
     std::string key;
     std::string value;
     key = read_buf.substr(0, idx);
