@@ -2,6 +2,7 @@
 # IDE / editor local settings
 .idea/
 .vscode/
+/.worktrees/
 
 # Build outputs
 cmake-build-debug/
