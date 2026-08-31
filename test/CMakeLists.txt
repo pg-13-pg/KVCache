@@ -18,6 +18,11 @@ target_link_libraries(test_iomanager_sleep PRIVATE fiber_lib pthread dl)
 add_test(NAME iomanager_cooperative_sleep COMMAND $<TARGET_FILE:test_iomanager_sleep>)
 set_tests_properties(iomanager_cooperative_sleep PROPERTIES TIMEOUT 5)
 
+add_executable(test_persister_wal persister_wal.cpp)
+target_link_libraries(test_persister_wal PRIVATE skip_list_on_raft boost_serialization)
+add_test(NAME persister_wal COMMAND $<TARGET_FILE:test_persister_wal>)
+set_tests_properties(persister_wal PROPERTIES TIMEOUT 10)
+
 add_test(NAME scheduler_plain_sleep COMMAND $<TARGET_FILE:test_scheduler>)
 set_tests_properties(scheduler_plain_sleep PROPERTIES TIMEOUT 20)
 
