@@ -39,6 +39,7 @@ void FdContext::triggerEvent(Event event) {
 
 //初始化 Scheduler，再创建 epoll 和用于唤醒的 pipe，把 pipe 读端注册进 epoll，初始化 fd 事件上下文数组，最后启动调度器
 IOManager::IOManager(size_t threads, bool use_caller, const std::string &name) : Scheduler(threads, use_caller, name) {
+  setHookEnabled(true);
   epfd_ = epoll_create(5000);
   int ret = pipe(tickleFds_);  //0读 1写
   CondPanic(ret == 0, "pipe error");

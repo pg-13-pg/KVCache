@@ -7,18 +7,23 @@
 
 using namespace std;
 
-void testFun1(const string& name) { cout << name; }
-
-void testFun2(const string& name) { cout << name; }
-
 int main() {
-  cout << "begin..." << endl;
-  string str1 = "Hello";
-  string str2 = " world";
-  DEFER {
-    testFun1(str1);
-    testFun2(str2);
-  };
-  cout << "end..." << endl;
+  string result;
+  {
+    string str1 = "Hello";
+    string str2 = " world";
+    DEFER {
+      result += str1;
+      result += str2;
+    };
+    if (!result.empty()) {
+      cerr << "deferred callback ran before scope exit" << endl;
+      return 1;
+    }
+  }
+  if (result != "Hello world") {
+    cerr << "deferred callback did not run at scope exit" << endl;
+    return 1;
+  }
   return 0;
 }

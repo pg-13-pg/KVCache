@@ -82,7 +82,7 @@ class Scheduler {
   virtual void tickle();
   /**
    * \brief  协程调度函数,
-   * 默认会启用hook
+   * syscall hook 由具体调度器配置，IOManager 会启用它。
    */
   void run();
   // 无任务时执行idle协程
@@ -91,6 +91,8 @@ class Scheduler {
   virtual bool stopping();
   // 设置当前线程调度器
   void setThis();
+  // syscall hook 依赖 IOManager 的事件循环和定时器。
+  void setHookEnabled(bool enabled) { hookEnabled_ = enabled; }
   // 返回是否有空闲进程
   bool isHasIdleThreads() { return idleThreadCnt_ > 0; }
 
@@ -130,6 +132,7 @@ class Scheduler {
   // use caller = true,调度器协程所在线程的id
   int rootThread_ = 0;
   bool isStopped_ = false;
+  bool hookEnabled_ = false;
 };
 }  // namespace monsoon
 

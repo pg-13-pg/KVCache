@@ -1,11 +1,15 @@
+#include <atomic>
+
 #include "monsoon.h"
 
 const std::string LOG_HEAD = "[TASK] ";
+std::atomic<int> completedTasks{0};
 // 获取开始和结束线程的id
 void test_fiber_1() {
   std::cout << LOG_HEAD << "tid = " << monsoon::GetThreadId() << ",test_fiber_1 begin" << std::endl;
 
   std::cout << LOG_HEAD << "tid = " << monsoon::GetThreadId() << ",test_fiber_1 finish" << std::endl;
+  ++completedTasks;
 }
 
 void test_fiber_2() {
@@ -14,18 +18,21 @@ void test_fiber_2() {
   sleep(3);// no hook 直接将当前协程阻塞，等效于将当前线程阻塞
 
   std::cout << LOG_HEAD << "tid = " << monsoon::GetThreadId() << ",test_fiber_2 finish" << std::endl;
+  ++completedTasks;
 }
 
 void test_fiber_3() {
   std::cout << LOG_HEAD << "tid = " << monsoon::GetThreadId() << ",test_fiber_3 begin" << std::endl;
 
   std::cout << LOG_HEAD << "tid = " << monsoon::GetThreadId() << ",test_fiber_3 finish" << std::endl;
+  ++completedTasks;
 }
 
 void test_fiber_4() {
   std::cout << LOG_HEAD << "tid = " << monsoon::GetThreadId() << ",test_fiber_4 begin" << std::endl;
 
   std::cout << LOG_HEAD << "tid = " << monsoon::GetThreadId() << ",test_fiber_4 finish" << std::endl;
+  ++completedTasks;
 }
 
 
@@ -49,7 +56,8 @@ void test_user_caller_1() {
 }
 
 // user_caller = true,使用main函数进行协程的调度，且多线程
-void test_user_caller_2() {
+bool test_user_caller_2() {
+  completedTasks = 0;
   std::cout << "main begin" << std::endl;
   // main函数
   monsoon::Scheduler sc(3, true);
@@ -69,6 +77,13 @@ void test_user_caller_2() {
   sc.stop();
 
   std::cout << "main end" << std::endl;
+  return completedTasks == 4;
 }
 
-int main() { test_user_caller_2(); }
+int main() {
+  if (!test_user_caller_2()) {
+    std::cerr << "scheduler did not complete all four tasks" << std::endl;
+    return 1;
+  }
+  return 0;
+}

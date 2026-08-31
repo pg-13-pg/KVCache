@@ -76,7 +76,7 @@ void Scheduler::start() {
 //创建调度器线程池后，Scheduler::run() 负责从任务队列中取出任务并执行，直到调度器停止。
 void Scheduler::run() {
   std::cout << LOG_HEAD << "begin run" << std::endl;
-  set_hook_enable(true);  //使用hook，hook的系统调用会让出协程执行权，等待IO事件触发后再恢复执行
+  set_hook_enable(hookEnabled_);
   setThis();
   if (GetThreadId() != rootThread_) {
     // 如果当前线程不是caller线程，则初始化该线程的调度协程
@@ -206,4 +206,3 @@ void Scheduler::stop() {
 }
 
 }  // namespace monsoon
-

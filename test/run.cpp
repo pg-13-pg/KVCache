@@ -3,6 +3,9 @@
 //
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+#include <boost/serialization/string.hpp>
+#include <boost/serialization/utility.hpp>
+#include <boost/serialization/vector.hpp>
 #include <fstream>
 #include <iostream>
 #include <utility>
@@ -54,6 +57,11 @@ int main() {
 
   // 反序列化数据到 vector<pair<string, string>> 对象
   ia >> loadedData;
+
+  if (loadedData != data) {
+    std::cerr << "serialization round trip changed the stored key/value pairs" << std::endl;
+    return 1;
+  }
 
   // 输出反序列化后的数据
   for (const auto& pair : loadedData) {
