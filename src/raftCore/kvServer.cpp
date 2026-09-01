@@ -2,7 +2,7 @@
 
 #include <rpcprovider.h>
 
-#include "mprpcconfig.h"
+#include "cluster_config.h"
 
 void KvServer::DprintfKVDB() {
   if (!Debug) {
@@ -347,70 +347,42 @@ void KvServer::GetStatus(google::protobuf::RpcController *controller,
   done->Run();
 }
 
-//启动一个 KVServer 节点，同时启动它内部的 Raft 节点、RPC 服务、节点间连接、快照恢复、apply 监听循环。
-KvServer::KvServer(int me, int maxraftstate, std::string nodeInforFileName, short port) : m_skipList(6) {
-  std::shared_ptr<Persister> persister = std::make_shared<Persister>(me);
+// 构造阶段只做配置校验和恢复，网络发布由 StartKVServer 显式启动。
+KvServer::KvServer(int me, int maxRaftState, std::filesystem::path configPath,
+                   std::filesystem::path dataDir)
+    : m_me(me), m_maxRaftState(maxRaftState), m_skipList(6) {
+  const auto endpoints = LoadClusterConfig(configPath);
+  if (me < 0 || static_cast<std::size_t>(me) >= endpoints.size()) {
+    throw std::runtime_error("node id is outside cluster config: " + std::to_string(me));
+  }
+  m_endpoint = endpoints[static_cast<std::size_t>(me)];
+  auto persister = std::make_shared<Persister>(std::move(dataDir));
 
-  m_me = me;
-  m_maxRaftState = maxraftstate;
   applyChan = std::make_shared<LockQueue<ApplyMsg> >();
   m_raftNode = std::make_shared<Raft>();
 
- //clerk层面 kvserver开启rpc接收功能
-  //    同时raft与raft节点之间也要开启rpc功能，因此有两个注册
-  std::thread t([this, port]() -> void {
-    // provider是一个rpc网络服务对象。把UserService对象发布到rpc节点上
-    RpcProvider provider;
-    provider.NotifyService(this);  //接受clerk的rpc请求
-    // 接受raft节点的rpc请求
-    provider.NotifyService(this->m_raftNode.get());  // todo：这里获取了原始指针，后面检查一下有没有泄露的问题 或者 shareptr释放的问题
-    provider.Run(m_me, port);// 启动一个rpc服务发布节点   Run以后，进程进入阻塞状态，等待远程的rpc调用请求
-  });
-  t.detach();
-
-  //开启rpc远程调用能力，需要注意必须要保证所有节点都开启rpc接受功能之后才能开启rpc远程调用能力
-  //这里使用睡眠来保证
-  std::cout << "raftServer node:" << m_me << " start to sleep to wait all ohter raftnode start!!!!" << std::endl;
-  sleep(6);
-  std::cout << "raftServer node:" << m_me << " wake up!!!! start to connect other raftnode" << std::endl;
-  //获取所有raft节点ip、port ，并进行连接,要排除自己
-  MprpcConfig config;
-  config.LoadConfigFile(nodeInforFileName.c_str());
-  std::vector<std::pair<std::string, short> > ipPortVt;
-  for (int i = 0; i < INT_MAX - 1; ++i) {
-    std::string node = "node" + std::to_string(i);
-
-    std::string nodeIp = config.Load(node + "ip");
-    std::string nodePortStr = config.Load(node + "port");
-    if (nodeIp.empty()) {
-      break;
-    }
-    ipPortVt.emplace_back(nodeIp, atoi(nodePortStr.c_str()));  //沒有atos方法，可以考慮自己实现
-  }
-
-  //进行连接
   std::vector<std::shared_ptr<RaftRpcUtil> > servers;
-  for (int i = 0; i < ipPortVt.size(); ++i) {
+  servers.reserve(endpoints.size());
+  for (std::size_t i = 0; i < endpoints.size(); ++i) {
     if (i == m_me) {
       servers.push_back(nullptr);
       continue;
     }
-    std::string otherNodeIp = ipPortVt[i].first;
-    short otherNodePort = ipPortVt[i].second;
-    auto *rpc = new RaftRpcUtil(otherNodeIp, otherNodePort);
-    servers.push_back(std::shared_ptr<RaftRpcUtil>(rpc));
-    std::cout << "node" << m_me << " 连接node" << i << "success!" << std::endl;
+    servers.push_back(std::make_shared<RaftRpcUtil>(endpoints[i].ip, endpoints[i].port));
   }
-  sleep(ipPortVt.size() - me);  //等待所有节点相互连接成功，
-  m_raftNode->init(servers, m_me, persister, applyChan);  //初始化raft，
-  m_skipList;
-  waitApplyCh;
-  m_lastRequestId;
-  m_lastSnapShotRaftLogIndex = 0;  // todo:感覺這個函數沒什麼用，不如直接調用raft節點中的snapshot值？？？
+  m_raftNode->init(std::move(servers), m_me, persister, applyChan);
+  m_lastSnapShotRaftLogIndex = m_raftNode->GetStatusSnapshot().snapshotIndex;
   auto snapshot = persister->ReadSnapshot();
   if (!snapshot.empty()) {
     ReadSnapShotToInstall(snapshot);
   }
-  std::thread t2(&KvServer::ReadRaftApplyCommandLoop, this);  // 启动 KVServer 的 apply 消费循环
-  t2.join();  //由于ReadRaftApplyCommandLoop一直不会结束，达到一直卡在这的目的（join：线程停在这里，等待t2线程结束）
+  std::thread(&KvServer::ReadRaftApplyCommandLoop, this).detach();
+}
+
+void KvServer::StartKVServer() {
+  m_raftNode->StartBackgroundTasks();
+  RpcProvider provider;
+  provider.NotifyService(this);
+  provider.NotifyService(m_raftNode.get());
+  provider.Run(m_endpoint.ip, m_endpoint.port);
 }

@@ -4,6 +4,7 @@
 #ifndef RAFTRPC_H
 #define RAFTRPC_H
 
+#include <cstdint>
 #include "raftRPC.pb.h"
 
 /// @brief 维护当前节点对其他某一个结点的所有rpc发送通信的功能
@@ -23,7 +24,7 @@ class RaftRpcUtil {
    * @param ip  远端ip
    * @param port  远端端口
    */
-  RaftRpcUtil(std::string ip, short port);
+  RaftRpcUtil(std::string ip, std::uint16_t port);
   ~RaftRpcUtil();
 };
 

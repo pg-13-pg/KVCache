@@ -1,5 +1,7 @@
 //启动 Raft KV 服务端集群的示例程序。
 #include <iostream>
+#include <filesystem>
+#include <fstream>
 #include "raft.h"
 // #include "kvServer.h"
 #include <kvServer.h>
@@ -35,30 +37,40 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
   }
-  std::ofstream file(configFileName, std::ios::out | std::ios::app);
-  file.close();
-  file = std::ofstream(configFileName, std::ios::out | std::ios::trunc);
-  if (file.is_open()) {
-    file.close();
-    std::cout << configFileName << " 已清空" << std::endl;
-  } else {
-    std::cout << "无法打开 " << configFileName << std::endl;
+  if (nodeNum <= 0 || nodeNum > 10000 || configFileName.empty()) {
+    ShowArgsHelp();
+    return EXIT_FAILURE;
+  }
+  const std::filesystem::path configPath(configFileName);
+  const std::filesystem::path dataRoot = configPath.parent_path() / "data";
+  std::filesystem::create_directories(dataRoot);
+  std::ofstream file(configPath, std::ios::out | std::ios::trunc);
+  if (!file) {
+    std::cerr << "无法打开 " << configFileName << std::endl;
     exit(EXIT_FAILURE);
   }
+  for (int i = 0; i < nodeNum; ++i) {
+    const auto port = static_cast<unsigned int>(startPort) + static_cast<unsigned int>(i);
+    file << "node" << i << "ip=127.0.0.1\n";
+    file << "node" << i << "port=" << port << '\n';
+    std::filesystem::create_directories(dataRoot / ("node-" + std::to_string(i)));
+  }
+  file.close();
+
   for (int i = 0; i < nodeNum; i++) {
-    short port = startPort + static_cast<short>(i);
-    std::cout << "start to create raftkv node:" << i << "    port:" << port << " pid:" << getpid() << std::endl;
+    std::cout << "start to create raftkv node:" << i << " pid:" << getpid() << std::endl;
     pid_t pid = fork();  // 创建新进程
     if (pid == 0) {
-      // 如果是子进程
-      // 子进程的代码
-
-      auto kvServer = new KvServer(i, 500, configFileName, port);
-      pause();  // 子进程进入等待状态，不会执行 return 语句
+      try {
+        KvServer server(i, 500, configPath, dataRoot / ("node-" + std::to_string(i)));
+        server.StartKVServer();
+        return 0;
+      } catch (const std::exception& error) {
+        std::cerr << "node " << i << ": " << error.what() << std::endl;
+        return EXIT_FAILURE;
+      }
     } else if (pid > 0) {
-      // 如果是父进程
-      // 父进程的代码
-      sleep(1);
+      continue;
     } else {
       // 如果创建进程失败
       std::cerr << "Failed to create child process." << std::endl;

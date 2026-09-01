@@ -1,9 +1,5 @@
 #include "rpcprovider.h"
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
 #include <cstring>
-#include <fstream>
 #include <string>
 #include "rpcheader.pb.h"
 #include "util.h"
@@ -36,30 +32,9 @@ void RpcProvider::NotifyService(google::protobuf::Service *service) {
 
 
 // 启动rpc服务节点，开始提供rpc远程网络调用服务
-void RpcProvider::Run(int nodeIndex, short port) {
-  //获取可用ip
-  char *ipC;
-  char hname[128];
-  struct hostent *hent;
-  gethostname(hname, sizeof(hname));   //  获取本机主机名
-  hent = gethostbyname(hname);  // 通过主机名获取本机的IP地址信息
-  for (int i = 0; hent->h_addr_list[i]; i++) {  // 遍历所有的IP地址
-    ipC = inet_ntoa(*(struct in_addr *)(hent->h_addr_list[i]));  
-  }
-  std::string ip = std::string(ipC); //最后获取到的ip是本机的ip地址
-  std::string node = "node" + std::to_string(nodeIndex);  //node0  node1  node2
-  std::ofstream outfile;
-  outfile.open("test.conf", std::ios::app);  //打开文件并追加写入
-  if (!outfile.is_open()) {
-    std::cout << "打开文件失败！" << std::endl;
-    exit(EXIT_FAILURE);
-  }
-  outfile << node + "ip=" + ip << std::endl;
-  outfile << node + "port=" + std::to_string(port) << std::endl;
-  outfile.close();
-
+void RpcProvider::Run(const std::string& bindIp, std::uint16_t port) {
   //创建服务器
-  muduo::net::InetAddress address(ip, port);
+  muduo::net::InetAddress address(bindIp, port);
 
   // 创建TcpServer对象
   m_muduo_server = std::make_shared<muduo::net::TcpServer>(&m_eventLoop, address, "RpcProvider");
@@ -72,7 +47,7 @@ void RpcProvider::Run(int nodeIndex, short port) {
   m_muduo_server->setThreadNum(4);
 
   // rpc服务端准备启动，打印信息
-  std::cout << "RpcProvider start service at ip:" << ip << " port:" << port << std::endl;
+  std::cout << "RpcProvider start service at ip:" << bindIp << " port:" << port << std::endl;
 
   // 启动网络服务
   m_muduo_server->start();// 启动 TcpServer，开始监听端口并启动内部 IO 线程。
@@ -187,7 +162,9 @@ void RpcProvider::SendRpcResponse(const muduo::net::TcpConnectionPtr &conn, goog
 }
 
 RpcProvider::~RpcProvider() {
-  std::cout << "[func - RpcProvider::~RpcProvider()]: ip和port信息：" << m_muduo_server->ipPort() << std::endl;
+  if (m_muduo_server) {
+    std::cout << "[func - RpcProvider::~RpcProvider()]: ip和port信息：" << m_muduo_server->ipPort() << std::endl;
+  }
   m_eventLoop.quit();
   
 }

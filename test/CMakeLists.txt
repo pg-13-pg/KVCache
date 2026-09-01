@@ -36,6 +36,11 @@ target_link_libraries(test_status_proto PRIVATE protobuf)
 add_test(NAME status_proto COMMAND $<TARGET_FILE:test_status_proto>)
 set_tests_properties(status_proto PROPERTIES TIMEOUT 5)
 
+add_executable(test_cluster_config cluster_config.cpp ${src_common})
+target_link_libraries(test_cluster_config PRIVATE boost_serialization)
+add_test(NAME cluster_config COMMAND $<TARGET_FILE:test_cluster_config>)
+set_tests_properties(cluster_config PROPERTIES TIMEOUT 5)
+
 add_test(NAME scheduler_plain_sleep COMMAND $<TARGET_FILE:test_scheduler>)
 set_tests_properties(scheduler_plain_sleep PROPERTIES TIMEOUT 20)
 

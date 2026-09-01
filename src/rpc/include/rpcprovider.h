@@ -5,6 +5,7 @@
 #include <muduo/net/TcpConnection.h>
 #include <muduo/net/TcpServer.h>
 #include <functional>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include "google/protobuf/service.h"
@@ -14,7 +15,7 @@ class RpcProvider {
  public:
 
   void NotifyService(google::protobuf::Service *service);// 这里是框架提供给外部使用的，可以发布rpc方法的函数接口
-  void Run(int nodeIndex, short port);// 启动rpc服务节点，开始提供rpc远程网络调用服务
+  void Run(const std::string& bindIp, std::uint16_t port);// 启动rpc服务节点，开始提供rpc远程网络调用服务
 
  private:
   // 组合EventLoop

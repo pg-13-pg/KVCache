@@ -13,8 +13,10 @@
 #include <boost/serialization/unordered_map.hpp>
 #include <boost/serialization/vector.hpp>
 #include <iostream>
+#include <filesystem>
 #include <mutex>
 #include <unordered_map>
+#include "cluster_config.h"
 #include "kvServerRPC.pb.h"
 #include "raft.h"
 #include "skipList.h"
@@ -37,10 +39,12 @@ class KvServer : raftKVRpcProctoc::kvServerRpc {
   std::unordered_map<std::string, int> m_lastRequestId;  // clientid -> requestID  //一个kV服务器可能连接多个client
 
   int m_lastSnapShotRaftLogIndex;   //快照包含的最后一个日志索引
+  NodeEndpoint m_endpoint;
 
  public:
   KvServer() = delete;
-  KvServer(int me, int maxraftstate, std::string nodeInforFileName, short port);
+  KvServer(int me, int maxRaftState, std::filesystem::path configPath,
+           std::filesystem::path dataDir);
 
   void StartKVServer();
   void DprintfKVDB();

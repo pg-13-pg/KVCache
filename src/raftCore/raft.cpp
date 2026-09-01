@@ -906,7 +906,7 @@ void Raft::Start(Op command, int* newLogIndex, int* newLogTerm, bool* isLeader) 
   *isLeader = true;
 }
 
-//保存依赖、初始化状态、恢复崩溃前持久化数据，然后启动心跳、选举和日志应用这三个后台任务。
+//保存依赖、初始化状态并恢复崩溃前持久化数据。后台任务由 StartBackgroundTasks 启动。
 void Raft::init(std::vector<std::shared_ptr<RaftRpcUtil>> peers, int me, std::shared_ptr<Persister> persister,
                 std::shared_ptr<LockQueue<ApplyMsg>> applyCh) {  //ApplyMsg：Raft提交给上层状态机的消息
   m_peers = peers;   //RaftRpcUtil把Rpc通信细节封装起来，让 Raft 类可以简单调用。
@@ -943,7 +943,14 @@ void Raft::init(std::vector<std::shared_ptr<RaftRpcUtil>> peers, int me, std::sh
           m_currentTerm, m_lastSnapshotIncludeIndex, m_lastSnapshotIncludeTerm);
 
   m_mtx.unlock();
+}
 
+void Raft::StartBackgroundTasks() {
+  {
+    std::lock_guard<std::mutex> lock(m_mtx);
+    if (m_backgroundTasksStarted) return;
+    m_backgroundTasksStarted = true;
+  }
   m_ioManager = std::make_unique<monsoon::IOManager>(FIBER_THREAD_NUM, FIBER_USE_CALLER_THREAD);
   //IO管理器的作用是管理协程的调度和执行，FIBER_THREAD_NUM：协程库中线程池大小 FIBER_USE_CALLER_THREAD 是否使用caller_thread执行调度任务
 
@@ -957,7 +964,6 @@ void Raft::init(std::vector<std::shared_ptr<RaftRpcUtil>> peers, int me, std::sh
 
   std::thread t3(&Raft::applierTicker, this); //日志应用  这里可以会阻塞，单开线程
   t3.detach();
-
 }
 //将raft节点的状态持久化到磁盘中，返回序列化后的字符串 
 std::string Raft::persistData() {

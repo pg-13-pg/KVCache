@@ -77,6 +77,7 @@ class Raft : public raftRpcProctoc::raftRpc {  //raftRPC.proto
 
   // 协程
   std::unique_ptr<monsoon::IOManager> m_ioManager = nullptr;//调度心跳定时器和选举定时器。
+  bool m_backgroundTasksStarted = false;
 
  public:
   void AppendEntries1(const raftRpcProctoc::AppendEntriesArgs *args, raftRpcProctoc::AppendEntriesReply *reply);  // 处理leader发来的AppendEntries请求，包括心跳和日志复制
@@ -138,6 +139,7 @@ class Raft : public raftRpcProctoc::raftRpc {  //raftRPC.proto
  public:
   void init(std::vector<std::shared_ptr<RaftRpcUtil>> peers, int me, std::shared_ptr<Persister> persister,
             std::shared_ptr<LockQueue<ApplyMsg>> applyCh);  // 初始化Raft节点并启动后台定时任务
+  void StartBackgroundTasks();
 
  private:
   // for persist
