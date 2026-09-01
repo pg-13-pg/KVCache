@@ -1,5 +1,6 @@
 #include "Persister.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -10,6 +11,17 @@
 namespace fs = std::filesystem;
 
 namespace {
+
+constexpr std::size_t kWalCompactionFloorBytes = 1024 * 1024;
+constexpr std::size_t kWalLiveStateMultiplier = 8;
+
+std::size_t WalCompactionLimit(std::size_t raftStateBytes, std::size_t snapshotBytes) {
+  const std::size_t checkpointBytes = kvraft::wal::kHeaderSize + raftStateBytes + snapshotBytes;
+  if (checkpointBytes > std::numeric_limits<std::size_t>::max() / kWalLiveStateMultiplier) {
+    return std::numeric_limits<std::size_t>::max();
+  }
+  return std::max(kWalCompactionFloorBytes, checkpointBytes * kWalLiveStateMultiplier);
+}
 
 [[noreturn]] void ThrowSystemError(const std::string& operation, const fs::path& path) {
   throw kvraft::PersistenceError(operation + " " + path.string() + ": " + std::strerror(errno));
@@ -134,7 +146,13 @@ void Persister::Save(std::string raftState, std::string snapshot) {
 
 void Persister::SaveRaftState(const std::string& data) {
   std::lock_guard<std::mutex> lock(mutex_);
-  AppendRecord(kvraft::wal::RecordType::State, data, "");
+  const std::size_t nextRecordBytes = kvraft::wal::kHeaderSize + data.size();
+  const std::size_t compactionLimit = WalCompactionLimit(data.size(), snapshot_.size());
+  if (walBytes_ > compactionLimit || nextRecordBytes > compactionLimit - walBytes_) {
+    CompactSnapshot(data, snapshot_);
+  } else {
+    AppendRecord(kvraft::wal::RecordType::State, data, "");
+  }
 }
 
 std::string Persister::ReadSnapshot() {
@@ -227,6 +245,7 @@ void Persister::Recover() {
     }
     nextSequence_ = lastSequence + 1;
   }
+  walBytes_ = static_cast<std::size_t>(lastValidOffset);
 
   if (lseek(walFd_, 0, SEEK_END) < 0) {
     ThrowSystemError("seek failed for", walPath_);
@@ -260,6 +279,7 @@ void Persister::AppendRecord(kvraft::wal::RecordType type, const std::string& ra
     throw kvraft::PersistenceError("WAL sequence exhausted");
   }
   ++nextSequence_;
+  walBytes_ += encoded.size();
   if (type == kvraft::wal::RecordType::State) {
     raftState_ = raftState;
   } else {
@@ -302,6 +322,7 @@ void Persister::CompactSnapshot(const std::string& raftState, const std::string&
     throw kvraft::PersistenceError("WAL sequence exhausted");
   }
   ++nextSequence_;
+  walBytes_ = encoded.size();
   raftState_ = raftState;
   snapshot_ = snapshot;
 }

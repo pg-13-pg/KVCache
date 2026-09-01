@@ -190,6 +190,17 @@ class RaftCluster:
             time.sleep(0.05)
         raise AssertionError(f"nodes did not apply through {target}")
 
+    def assert_idle_wal_stable(self) -> None:
+        time.sleep(0.2)
+        before = [(node.data_dir / "raft.wal").stat().st_size
+                  for node in self.nodes]
+        time.sleep(0.5)
+        after = [(node.data_dir / "raft.wal").stat().st_size
+                 for node in self.nodes]
+        if after != before:
+            raise AssertionError(
+                f"idle heartbeats persisted Raft state: before={before} after={after}")
+
     def wait_node_caught_up(self, node_id: int, commit_index: int,
                             last_applied: int, timeout: float = 10.0) -> None:
         deadline = time.monotonic() + timeout
@@ -284,6 +295,7 @@ def scenario_failover(cluster: RaftCluster) -> None:
             raise AssertionError(f"replication mismatch for key-{item:03d}")
     leader_state = cluster.status(old_leader)
     cluster.wait_all_applied(int(leader_state["commit_index"]))
+    cluster.assert_idle_wal_stable()
 
     cluster.stop_node(old_leader, signal.SIGKILL)
     new_leader, new_term = cluster.wait_for_leader()

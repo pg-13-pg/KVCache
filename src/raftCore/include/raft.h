@@ -84,7 +84,7 @@ class Raft : public raftRpcProctoc::raftRpc {  //raftRPC.proto
   void applierTicker();  // 周期性把已提交但未应用的日志推送给上层状态机
   bool CondInstallSnapshot(int lastIncludedTerm, int lastIncludedIndex, std::string snapshot);  // 判断并安装上层传入的快照
   
-  void doElection();  // 发起一轮新的leader选举
+  void doElection(std::chrono::system_clock::time_point observedResetTime);  // 计时器未被重置时发起选举
   void doHeartBeat();  // leader向其他节点发送心跳或日志复制请求
   void electionTimeOutTicker();  // 选举超时检测循环，超时后触发选举
   std::vector<ApplyMsg> getApplyLogs();  // 获取需要提交给状态机执行的日志消息

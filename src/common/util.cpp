@@ -15,9 +15,15 @@ void myAssert(bool condition, std::string message) {  //如果条件不满足，
 std::chrono::_V2::system_clock::time_point now() { return std::chrono::high_resolution_clock::now(); }
 
 std::chrono::milliseconds getRandomizedElectionTimeout() {  //生成一个随机的选举超时时间，范围在
-  std::random_device rd;  //随机种子
-  std::mt19937 rng(rd()); //伪随机数生成器
-  std::uniform_int_distribution<int> dist(minRandomizedElectionTime, maxRandomizedElectionTime);//300-500ms
+  thread_local std::mt19937 rng([] {
+    std::random_device rd;
+    const auto ticks = static_cast<std::uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    std::seed_seq seed{rd(), rd(), static_cast<unsigned int>(getpid()),
+                       static_cast<unsigned int>(ticks), static_cast<unsigned int>(ticks >> 32)};
+    return std::mt19937(seed);
+  }());
+  std::uniform_int_distribution<int> dist(minRandomizedElectionTime, maxRandomizedElectionTime);
 
   return std::chrono::milliseconds(dist(rng));
 }

@@ -18,14 +18,19 @@ void Raft::AppendEntries1(const raftRpcProctoc::AppendEntriesArgs* args, raftRpc
             args->term(), m_me, m_currentTerm);
     return;  
   }
- 
-  DEFER { persist(); };  //由于这个局部变量创建在锁之后，因此执行persist的时候应该也是拿到锁的.
+
+  bool persistentStateChanged = false;
+  DEFER {
+    if (persistentStateChanged) persist();
+    m_lastResetElectionTime = now();
+  };
 
   if (args->term() > m_currentTerm) {
     // 三变 ,防止遗漏，无论什么时候都是三变
     m_status = Follower;
     m_currentTerm = args->term();
     m_votedFor = -1;  // 这里设置成-1有意义，如果突然宕机然后上线理论上是可以投票的
+    persistentStateChanged = true;
     // 这里可不直接返回，应该改成让改节点尝试接收日志
     // 如果是领导人和candidate突然转到Follower好像也不用其他操作
     // 如果本来就是Follower，那么其term变化，相当于“不言自明”的换了追随的对象，因为原来的leader的term更小，是不会再接收其消息了
@@ -33,8 +38,6 @@ void Raft::AppendEntries1(const raftRpcProctoc::AppendEntriesArgs* args, raftRpc
   myAssert(args->term() == m_currentTerm, format("assert {args.Term == rf.currentTerm} fail"));
   // 如果发生网络分区，那么candidate可能会收到同一个term的leader的消息，要转变为Follower
   m_status = Follower;  
-
-  m_lastResetElectionTime = now();  //接受到leader的消息，重置选举计时器
 
   // 不能无脑的从prevlogIndex开始截断修改日志，因为rpc可能会延迟，导致发过来的rpc ae是很久之前的，（leader日志太久）
   //	那么就比较日志，日志有3种情况
@@ -63,6 +66,7 @@ void Raft::AppendEntries1(const raftRpcProctoc::AppendEntriesArgs* args, raftRpc
       if (log.logindex() > getLastLogIndex()) {//leader更新日志比follwer最新日志LastLogIndex新
         
         m_logs.push_back(log);
+        persistentStateChanged = true;
       } else {//这条日志的 index follower 已经拥有
         // todo ： 这里可以改进为比较对应logIndex位置的term是否相等，term相等就代表匹配
         //  todo：这个地方放出来会出问题,按理说index相同，term相同，log也应该相同才对
@@ -80,6 +84,7 @@ void Raft::AppendEntries1(const raftRpcProctoc::AppendEntriesArgs* args, raftRpc
         if (m_logs[getSlicesIndexFromLogIndex(log.logindex())].logterm() != log.logterm()) {
           //term不匹配就更新
           m_logs[getSlicesIndexFromLogIndex(log.logindex())] = log;
+          persistentStateChanged = true;
         }
       }
     }
@@ -147,11 +152,13 @@ bool Raft::CondInstallSnapshot(int lastIncludedTerm, int lastIncludedIndex, std:
 }
 
 
-void Raft::doElection() {
+void Raft::doElection(std::chrono::system_clock::time_point observedResetTime) {
   std::lock_guard<std::mutex> g(m_mtx); //需要对raft节点状态进行加锁，比如m_status，m_currentTerm，m_votedFor等，因为这些状态在选举过程中会发生变化，
                                        //且选举过程是由定时器触发的，因此需要加锁保证线程安全
 
-  if (m_status != Leader) {
+  // AppendEntries may reset the timer after the ticker wakes but before this
+  // method acquires the lock. Do not turn that fresh follower into a candidate.
+  if (m_status != Leader && m_lastResetElectionTime == observedResetTime) {
     DPrintf("[       ticker-func-rf(%d)              ]  选举定时器到期且不是leader，开始选举 \n", m_me);
     //当选举的时候定时器超时就必须重新选举，不然没有选票就会一直卡住
     //重竞选超时，term也会增加的
@@ -264,45 +271,28 @@ void Raft::electionTimeOutTicker() {  //协程，一直在运行，定时检查�
      * 如果不睡眠，那么对于leader，这个函数会一直空转，浪费cpu。且加入协程之后，
      * 空转会导致其他协程无法运行，对于时间敏感的AE，会导致心跳无法正常发送导致异常
      */
-    while (m_status == Leader) {  //如果是leader就一直睡眠，直到不是leader了才继续往下走，检查是否需要选举
-      usleep(HeartBeatTimeout);  //定时时间没有严谨设置，因为HeartBeatTimeout比选举超时一般小一个数量级，因此就设置为HeartBeatTimeout了
-    }
     std::chrono::duration<signed long int, std::ratio<1, 1000000000>> suitableSleepTime{};//时间长度类型，初始化为0，time=n*ratio
     std::chrono::system_clock::time_point wakeTime{};  //时间点类型，初始化为0，
+    std::chrono::system_clock::time_point observedResetTime{};
+    bool isLeader = false;
     {
-      m_mtx.lock();
+      std::lock_guard<std::mutex> lock(m_mtx);
+      isLeader = m_status == Leader;
       wakeTime = now();
+      observedResetTime = m_lastResetElectionTime;
       //这里使用一个随机数来计算睡眠时间，避免多个节点同时选举导致的冲突，随机数的范围是0到ElectionTimeout之间
       suitableSleepTime = getRandomizedElectionTimeout() + m_lastResetElectionTime - wakeTime;//距离下一次选举还剩多少时间
-      m_mtx.unlock();
+    }
+    if (isLeader) {
+      usleep(1000 * HeartBeatTimeout);
+      continue;
     }
     //如果距离下一次选举还有时间，那么就睡眠，等待下一次选举的到来
     if (std::chrono::duration<double, std::milli>(suitableSleepTime).count() > 1) { //大于1ms
-      // 获取当前时间点
-      auto start = std::chrono::steady_clock::now();
-
       usleep(std::chrono::duration_cast<std::chrono::microseconds>(suitableSleepTime).count());
-      // std::this_thread::sleep_for(suitableSleepTime);
-
-      // 获取函数运行结束后的时间点
-      auto end = std::chrono::steady_clock::now();
-
-      // 计算时间差并输出结果（单位为毫秒）
-      std::chrono::duration<double, std::milli> duration = end - start;
-
-      // 使用ANSI控制序列将输出颜色修改为紫色
-      std::cout << "\033[1;35m electionTimeOutTicker();函数设置睡眠时间为: "
-                << std::chrono::duration_cast<std::chrono::milliseconds>(suitableSleepTime).count() << " 毫秒\033[0m"
-                << std::endl;
-      std::cout << "\033[1;35m electionTimeOutTicker();函数实际睡眠时间为: " << duration.count() << " 毫秒\033[0m"
-                << std::endl;
     }
 
-    if (std::chrono::duration<double, std::milli>(m_lastResetElectionTime - wakeTime).count() > 0) {
-      //说明睡眠的这段时间有重置定时器，那么就没有超时，再次睡眠
-      continue;
-    }
-    doElection();
+    doElection(observedResetTime);
   }
 }
 
@@ -385,6 +375,7 @@ void Raft::InstallSnapshot(const raftRpcProctoc::InstallSnapshotRequest* args,
 
     return;
   }
+  DEFER { m_lastResetElectionTime = now(); };
   if (args->term() > m_currentTerm) {
     //后面两种情况都要接收日志
     m_currentTerm = args->term();
@@ -393,7 +384,6 @@ void Raft::InstallSnapshot(const raftRpcProctoc::InstallSnapshotRequest* args,
     persist();
   }
   m_status = Follower;  //==时 candidate也要变成follower，防止出现两个leader的情况
-  m_lastResetElectionTime = now();
   reply->set_term(m_currentTerm);
 
   std::vector<kvraft::LogPosition> positions;
@@ -431,46 +421,29 @@ void Raft::pushMsgToKvServer(ApplyMsg msg) { applyChan->Push(msg); }
 
 void Raft::leaderHearBeatTicker() {
   while (true) {
-    //不是leader的话就没有必要进行后续操作，况且还要拿锁，很影响性能，目前是睡眠，后面再优化优化
-    while (m_status != Leader) {
-      usleep(1000 * HeartBeatTimeout);
-      // std::this_thread::sleep_for(std::chrono::milliseconds(HeartBeatTimeout));
-    }
-    static std::atomic<int32_t> atomicCount = 0;
-
     std::chrono::duration<signed long int, std::ratio<1, 1000000000>> suitableSleepTime{};
     std::chrono::system_clock::time_point wakeTime{};
+    std::chrono::system_clock::time_point observedResetTime{};
+    bool isLeader = false;
     {
       std::lock_guard<std::mutex> lock(m_mtx);
+      isLeader = m_status == Leader;
       wakeTime = now();
+      observedResetTime = m_lastResetHearBeatTime;
       suitableSleepTime = std::chrono::milliseconds(HeartBeatTimeout) + m_lastResetHearBeatTime - wakeTime;
+    }
+    if (!isLeader) {
+      usleep(1000 * HeartBeatTimeout);
+      continue;
     }
 
     if (std::chrono::duration<double, std::milli>(suitableSleepTime).count() > 1) {
-      std::cout << atomicCount << "\033[1;35m leaderHearBeatTicker();函数设置睡眠时间为: "
-                << std::chrono::duration_cast<std::chrono::milliseconds>(suitableSleepTime).count() << " 毫秒\033[0m"
-                << std::endl;
-      // 获取当前时间点
-      auto start = std::chrono::steady_clock::now();
-
       usleep(std::chrono::duration_cast<std::chrono::microseconds>(suitableSleepTime).count());
-      // std::this_thread::sleep_for(suitableSleepTime);
-
-      // 获取函数运行结束后的时间点
-      auto end = std::chrono::steady_clock::now();
-
-      // 计算时间差并输出结果（单位为毫秒）
-      std::chrono::duration<double, std::milli> duration = end - start;
-
-      // 使用ANSI控制序列将输出颜色修改为紫色
-      std::cout << atomicCount << "\033[1;35m leaderHearBeatTicker();函数实际睡眠时间为: " << duration.count()
-                << " 毫秒\033[0m" << std::endl;
-      ++atomicCount;
     }
 
-    if (std::chrono::duration<double, std::milli>(m_lastResetHearBeatTime - wakeTime).count() > 0) {
-      //睡眠的这段时间有重置定时器，没有超时，再次睡眠
-      continue;
+    {
+      std::lock_guard<std::mutex> lock(m_mtx);
+      if (m_status != Leader || m_lastResetHearBeatTime != observedResetTime) continue;
     }
     doHeartBeat();
   }
@@ -556,9 +529,12 @@ void Raft::persist() {
 void Raft::RequestVote(const raftRpcProctoc::RequestVoteArgs* args, raftRpcProctoc::RequestVoteReply* reply) {
   std::lock_guard<std::mutex> lg(m_mtx);  //保护自身raft节点状态的线程安全，涉及到m_status，m_currentTerm，m_votedFor等
 
+  bool persistentStateChanged = false;
+  bool resetElectionTimer = false;
   DEFER {  //宏定义，用类的析构来管理资源 DEFER在离开作用域的时候自动调用析构函数，然后调用persist
     //离开作用域时 ，应该先持久化，再unlock，  DEFER写在lg后面
-    persist();
+    if (persistentStateChanged) persist();
+    if (resetElectionTimer) m_lastResetElectionTime = now();
   };
 
   //对args的term的三种情况分别进行处理，大于小于等于自己的term都是不同的处理
@@ -574,6 +550,7 @@ void Raft::RequestVote(const raftRpcProctoc::RequestVoteArgs* args, raftRpcProct
     m_status = Follower;
     m_currentTerm = args->term();
     m_votedFor = -1;
+    persistentStateChanged = true;
 
     //	重置定时器：收到leader的ae，开始选举，投出票
     //这时候更新了term之后，votedFor也要置为-1
@@ -599,8 +576,9 @@ void Raft::RequestVote(const raftRpcProctoc::RequestVoteArgs* args, raftRpcProct
     return;
   } 
   else { //没有投票，或者投的就是这个candidate，那么就投票，并且重置定时器
+    persistentStateChanged = persistentStateChanged || m_votedFor != args->candidateid();
     m_votedFor = args->candidateid(); 
-    m_lastResetElectionTime = now();  //认为必须要在投出票的时候才重置定时器，
+    resetElectionTimer = true;
     reply->set_term(m_currentTerm);
     reply->set_votestate(Normal);
     reply->set_votegranted(true);
@@ -687,11 +665,13 @@ int Raft::getSlicesIndexFromLogIndex(int logIndex) {
 bool Raft::sendRequestVote(int server, std::shared_ptr<raftRpcProctoc::RequestVoteArgs> args,
                            std::shared_ptr<raftRpcProctoc::RequestVoteReply> reply, std::shared_ptr<int> votedNum) {
  
-  auto start = now();
-  DPrintf("[func-sendRequestVote rf{%d}] 向server{%d} 发送 RequestVote 开始", m_me, m_currentTerm, getLastLogIndex());
+  auto start = std::chrono::steady_clock::now();
+  DPrintf("[func-sendRequestVote rf{%d}] 向server{%d}发送term{%d}的RequestVote开始", m_me, server, args->term());
   bool ok = m_peers[server]->RequestVote(args.get(), reply.get());  //这个函数是同步的，直到收到回复才会返回，
-  DPrintf("[func-sendRequestVote rf{%d}] 向server{%d} 发送 RequestVote 完毕，耗时:{%d} ms", m_me, m_currentTerm,
-          getLastLogIndex(), now() - start);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start).count();
+  DPrintf("[func-sendRequestVote rf{%d}] 向server{%d}发送term{%d}的RequestVote完成，耗时{%lld}ms", m_me, server,
+          args->term(), static_cast<long long>(elapsed));
 
   if (!ok) {
     return ok;  //网络不通，或者对方节点宕机了，反正就是没有收到回复了，那么就没有必要进行后续处理了
@@ -704,12 +684,16 @@ bool Raft::sendRequestVote(int server, std::shared_ptr<raftRpcProctoc::RequestVo
     m_currentTerm = reply->term();
     m_votedFor = -1;
     persist();
+    m_lastResetElectionTime = now();
     return true;
   } else if (reply->term() < m_currentTerm) { //如果收到的回复的term比自己小，那么就说明对方已经过时了，直接忽略这个回复就好了，不用进行后续处理了
     return true;
   }
   myAssert(reply->term() == m_currentTerm, format("assert {reply.Term==rf.currentTerm} fail"));//前面已经校验过了，这里应该是相等的了，如果不相等就说明代码哪里写错了
 
+  if (m_status != Candidate || args->term() != m_currentTerm) {
+    return true;
+  }
   if (!reply->votegranted()) {
     return true;
   }
@@ -780,6 +764,8 @@ bool Raft::sendAppendEntries(int server, std::shared_ptr<raftRpcProctoc::AppendE
     m_status = Follower;  //
     m_currentTerm = reply->term();
     m_votedFor = -1;
+    persist();
+    m_lastResetElectionTime = now();
     return ok;
   } else if (reply->term() < m_currentTerm) {
     DPrintf("[func -sendAppendEntries  rf{%d}]  节点：{%d}的term{%d}<rf{%d}的term{%d}\n", m_me, server, reply->term(),
@@ -787,8 +773,8 @@ bool Raft::sendAppendEntries(int server, std::shared_ptr<raftRpcProctoc::AppendE
     return ok;
   }
 
-  if (m_status != Leader) {
-    //如果不是leader，那么就不要对返回的情况进行处理了
+  if (m_status != Leader || args->term() != m_currentTerm) {
+    //如果已经不是发起该请求的leader，那么就不要处理陈旧响应
     return ok;
   }
 

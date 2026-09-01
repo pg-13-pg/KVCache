@@ -4,6 +4,7 @@
 
 #include "wal_format.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -31,6 +32,7 @@ class Persister {
   std::filesystem::path walPath_;
   int walFd_ = -1;
   std::uint64_t nextSequence_ = 1;
+  std::size_t walBytes_ = 0;
   std::string raftState_;
   std::string snapshot_;
   std::mutex mutex_;

@@ -3,8 +3,11 @@
 
 #include <mprpcchannel.h>
 #include <mprpccontroller.h>
+#include "config.h"
 
 bool RaftRpcUtil::AppendEntries(raftRpcProctoc::AppendEntriesArgs *args, raftRpcProctoc::AppendEntriesReply *response) {
+  std::unique_lock<std::mutex> lock(callMutex_, std::try_to_lock);
+  if (!lock.owns_lock()) return false;
   MprpcController controller;
   stub_->AppendEntries(&controller, args, response, nullptr);
   return !controller.Failed();
@@ -12,12 +15,16 @@ bool RaftRpcUtil::AppendEntries(raftRpcProctoc::AppendEntriesArgs *args, raftRpc
 
 bool RaftRpcUtil::InstallSnapshot(raftRpcProctoc::InstallSnapshotRequest *args,
                                   raftRpcProctoc::InstallSnapshotResponse *response) {
+  std::unique_lock<std::mutex> lock(callMutex_, std::try_to_lock);
+  if (!lock.owns_lock()) return false;
   MprpcController controller;
   stub_->InstallSnapshot(&controller, args, response, nullptr);
   return !controller.Failed();
 }
 
 bool RaftRpcUtil::RequestVote(raftRpcProctoc::RequestVoteArgs *args, raftRpcProctoc::RequestVoteReply *response) {
+  std::unique_lock<std::mutex> lock(callMutex_, std::try_to_lock);
+  if (!lock.owns_lock()) return false;
   MprpcController controller;
   stub_->RequestVote(&controller, args, response, nullptr);
   return !controller.Failed();
@@ -28,7 +35,8 @@ bool RaftRpcUtil::RequestVote(raftRpcProctoc::RequestVoteArgs *args, raftRpcProc
 RaftRpcUtil::RaftRpcUtil(std::string ip, std::uint16_t port) {
   //*********************************************  */
   //发送rpc设置
-  stub_ = new raftRpcProctoc::raftRpc_Stub(new MprpcChannel(ip, port, false));
+  stub_ = new raftRpcProctoc::raftRpc_Stub(
+      new MprpcChannel(ip, port, false, std::chrono::milliseconds(RaftRpcTimeout)));
 }
 
 RaftRpcUtil::~RaftRpcUtil() { delete stub_; }

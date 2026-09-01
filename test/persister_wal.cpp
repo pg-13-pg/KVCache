@@ -65,6 +65,27 @@ void TestSnapshotThenState(const fs::path& root) {
   Expect(reopened.ReadSnapshot() == std::string("kv\0snapshot", 11), "snapshot missing");
 }
 
+void TestStateWalCompactionPreservesSnapshot(const fs::path& root) {
+  const fs::path dataDir = root / "state-compaction";
+  const std::string snapshot("snapshot\0payload", 16);
+  std::string latestState;
+  {
+    Persister p(dataDir);
+    p.Save("state-at-snapshot", snapshot);
+    for (int index = 0; index < 80; ++index) {
+      latestState.assign(16 * 1024, static_cast<char>('a' + index % 26));
+      latestState.replace(0, 8, std::to_string(index));
+      p.SaveRaftState(latestState);
+    }
+    Expect(fs::file_size(p.WalPath()) <= 1024 * 1024,
+           "state-only WAL grew beyond its compaction bound");
+  }
+
+  Persister reopened(dataDir);
+  Expect(reopened.ReadRaftState() == latestState, "compaction lost the latest Raft state");
+  Expect(reopened.ReadSnapshot() == snapshot, "state compaction lost the installed snapshot");
+}
+
 void TestPartialHeaderTail(const fs::path& root) {
   fs::path wal;
   {
@@ -161,6 +182,7 @@ int main() {
     TemporaryDirectory directory;
     TestBinaryRoundTrip(directory.path());
     TestSnapshotThenState(directory.path());
+    TestStateWalCompactionPreservesSnapshot(directory.path());
     TestPartialHeaderTail(directory.path());
     TestPartialPayloadTail(directory.path());
     TestCompleteChecksumCorruption(directory.path());

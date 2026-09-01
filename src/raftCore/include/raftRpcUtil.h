@@ -5,6 +5,7 @@
 #define RAFTRPC_H
 
 #include <cstdint>
+#include <mutex>
 #include "raftRPC.pb.h"
 
 /// @brief 维护当前节点对其他某一个结点的所有rpc发送通信的功能
@@ -12,6 +13,7 @@
 class RaftRpcUtil {
  private:
   raftRpcProctoc::raftRpc_Stub *stub_;    // raftRpcProctoc
+  std::mutex callMutex_;
 
  public:
   //主动调用其他节点的三个方法,可以按照mit6824来调用，但是别的节点调用自己的好像就不行了，要继承protoc提供的service类才行
