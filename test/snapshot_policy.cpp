@@ -20,9 +20,17 @@ int main() {
 
   try {
     const std::vector<LogPosition> logs{{11, 4}, {12, 4}, {13, 5}};
-    Expect(PlanSnapshotInstall(10, 3, logs, 9, 2).decision == SnapshotDecision::Stale);
-    Expect(PlanSnapshotInstall(10, 3, logs, 10, 3).decision == SnapshotDecision::Idempotent);
-    Expect(PlanSnapshotInstall(10, 3, logs, 10, 4).decision == SnapshotDecision::Conflict);
+    const auto stale = PlanSnapshotInstall(10, 3, logs, 9, 2);
+    Expect(stale.decision == SnapshotDecision::Stale);
+    Expect(stale.firstRetainedLog == logs.size());
+
+    const auto idempotent = PlanSnapshotInstall(10, 3, logs, 10, 3);
+    Expect(idempotent.decision == SnapshotDecision::Idempotent);
+    Expect(idempotent.firstRetainedLog == logs.size());
+
+    const auto conflict = PlanSnapshotInstall(10, 3, logs, 10, 4);
+    Expect(conflict.decision == SnapshotDecision::Conflict);
+    Expect(conflict.firstRetainedLog == logs.size());
 
     const auto retain = PlanSnapshotInstall(10, 3, logs, 12, 4);
     Expect(retain.decision == SnapshotDecision::Install);

@@ -14,6 +14,8 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 
 #define STORE_FILE "store/dumpFile"
@@ -309,11 +311,19 @@ void SkipList<K, V>::load_file(const std::string& dumpStr) {
   boost::archive::text_iarchive archive(stream);
   archive >> dumper;
 
-  std::lock_guard<std::mutex> lock(_mtx);
-  clearUnlocked();
-  for (std::size_t index = 0; index < dumper.keyDumpVt_.size(); ++index) {
-    insertElementUnlocked(dumper.keyDumpVt_[index], dumper.valDumpVt_[index]);
+  if (dumper.keyDumpVt_.size() != dumper.valDumpVt_.size()) {
+    throw std::runtime_error("skip-list snapshot has mismatched key/value counts");
   }
+
+  SkipList<K, V> staged(_max_level);
+  for (std::size_t index = 0; index < dumper.keyDumpVt_.size(); ++index) {
+    staged.insertElementUnlocked(dumper.keyDumpVt_[index], dumper.valDumpVt_[index]);
+  }
+
+  std::lock_guard<std::mutex> lock(_mtx);
+  std::swap(_skip_list_level, staged._skip_list_level);
+  std::swap(_header, staged._header);
+  std::swap(_element_count, staged._element_count);
 }
 
 template <typename K, typename V>
