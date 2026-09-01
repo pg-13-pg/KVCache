@@ -1,9 +1,12 @@
 #include "mprpcchannel.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <cerrno>
+#include <cstring>
 #include <string>
 #include "mprpccontroller.h"
 #include "rpcheader.pb.h"
@@ -20,11 +23,8 @@ void MprpcChannel::CallMethod(const google::protobuf::MethodDescriptor* method,
     std::string errMsg;
     bool rt = newConnect(m_ip.c_str(), m_port, &errMsg);
     if (!rt) {
-      DPrintf("[func-MprpcChannel::CallMethod]重连接ip：{%s} port{%d}失败", m_ip.c_str(), m_port);
       controller->SetFailed(errMsg);
       return;
-    } else {
-      DPrintf("[func-MprpcChannel::CallMethod]连接ip：{%s} port{%d}成功", m_ip.c_str(), m_port);
     }
   }
 
@@ -67,39 +67,43 @@ void MprpcChannel::CallMethod(const google::protobuf::MethodDescriptor* method,
   // 最后，将请求参数附加到send_rpc_str后面
    send_rpc_str += args_str;
 
-  // 发送rpc请求
-  //失败会重试连接再发送，重试连接失败会直接return
-  while (-1 == send(m_clientFd, send_rpc_str.c_str(), send_rpc_str.size(), 0)) {
-    char errtxt[512] = {0};
-    sprintf(errtxt, "send error! errno:%d", errno);
-    std::cout << "尝试重新连接，对方ip：" << m_ip << " 对方端口" << m_port << std::endl;
+  std::size_t sent = 0;
+  while (sent < send_rpc_str.size()) {
+    const auto result = send(m_clientFd, send_rpc_str.data() + sent,
+                             send_rpc_str.size() - sent, MSG_NOSIGNAL);
+    if (result > 0) {
+      sent += static_cast<std::size_t>(result);
+      continue;
+    }
+    if (result < 0 && errno == EINTR) continue;
+    const std::string error = "send failed: " + std::string(std::strerror(errno));
     close(m_clientFd);
     m_clientFd = -1;
-    std::string errMsg;
-    bool rt = newConnect(m_ip.c_str(), m_port, &errMsg);
-    if (!rt) {
-      controller->SetFailed(errMsg);
-      return;
-    }
+    controller->SetFailed(error);
+    return;
   }
  
   // 接收rpc请求的响应值
   char recv_buf[1024] = {0};
   int recv_size = 0;
-  if (-1 == (recv_size = recv(m_clientFd, recv_buf, 1024, 0))) {  //阻塞等待
+  do {
+    recv_size = recv(m_clientFd, recv_buf, sizeof(recv_buf), 0);
+  } while (recv_size < 0 && errno == EINTR);
+  if (recv_size <= 0) {
+    const std::string error = recv_size == 0
+                                  ? "connection closed before RPC response"
+                                  : "receive failed: " + std::string(std::strerror(errno));
     close(m_clientFd);
     m_clientFd = -1;
-    char errtxt[512] = {0};
-    sprintf(errtxt, "recv error! errno:%d", errno);
-    controller->SetFailed(errtxt);
+    controller->SetFailed(error);
     return;
   }
 
   // 反序列化rpc调用的响应数据存入response
   if (!response->ParseFromArray(recv_buf, recv_size)) {
-    char errtxt[1050] = {0};
-    sprintf(errtxt, "parse error! response_str:%s", recv_buf);
-    controller->SetFailed(errtxt);
+    close(m_clientFd);
+    m_clientFd = -1;
+    controller->SetFailed("parse RPC response failed");
     return;
   }
 }
@@ -114,17 +118,67 @@ bool MprpcChannel::newConnect(const char* ip, uint16_t port, string* errMsg) {
     *errMsg = errtxt;
     return false;
   }
-  struct sockaddr_in server_addr;
+  const int originalFlags = fcntl(clientfd, F_GETFL, 0);
+  if (originalFlags < 0 || fcntl(clientfd, F_SETFL, originalFlags | O_NONBLOCK) < 0) {
+    *errMsg = "configure nonblocking connect failed";
+    close(clientfd);
+    m_clientFd = -1;
+    return false;
+  }
+  struct sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
   server_addr.sin_port = htons(port);
-  server_addr.sin_addr.s_addr = inet_addr(ip);
-  // 连接rpc服务节点
-  if (-1 == connect(clientfd, (struct sockaddr*)&server_addr, sizeof(server_addr))) {
+  if (inet_pton(AF_INET, ip, &server_addr.sin_addr) != 1) {
+    *errMsg = "invalid IPv4 address: " + std::string(ip);
     close(clientfd);
-    char errtxt[512] = {0};
-    sprintf(errtxt, "connect fail! errno:%d", errno);
     m_clientFd = -1;
-    *errMsg = errtxt;
+    return false;
+  }
+
+  int connectResult = connect(clientfd, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr));
+  if (connectResult < 0 && errno != EINPROGRESS) {
+    *errMsg = "connect failed: " + std::string(std::strerror(errno));
+    close(clientfd);
+    m_clientFd = -1;
+    return false;
+  }
+  if (connectResult < 0) {
+    pollfd descriptor{clientfd, POLLOUT, 0};
+    int pollResult;
+    do {
+      pollResult = poll(&descriptor, 1, static_cast<int>(m_ioTimeout.count()));
+    } while (pollResult < 0 && errno == EINTR);
+    if (pollResult <= 0) {
+      *errMsg = pollResult == 0 ? "connect timed out"
+                                : "connect poll failed: " + std::string(std::strerror(errno));
+      close(clientfd);
+      m_clientFd = -1;
+      return false;
+    }
+    int socketError = 0;
+    socklen_t errorSize = sizeof(socketError);
+    if (getsockopt(clientfd, SOL_SOCKET, SO_ERROR, &socketError, &errorSize) < 0 || socketError != 0) {
+      if (socketError == 0) socketError = errno;
+      *errMsg = "connect failed: " + std::string(std::strerror(socketError));
+      close(clientfd);
+      m_clientFd = -1;
+      return false;
+    }
+  }
+  if (fcntl(clientfd, F_SETFL, originalFlags) < 0) {
+    *errMsg = "restore socket flags failed";
+    close(clientfd);
+    m_clientFd = -1;
+    return false;
+  }
+  timeval timeout{};
+  timeout.tv_sec = static_cast<time_t>(m_ioTimeout.count() / 1000);
+  timeout.tv_usec = static_cast<suseconds_t>((m_ioTimeout.count() % 1000) * 1000);
+  if (setsockopt(clientfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0 ||
+      setsockopt(clientfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+    *errMsg = "configure socket timeout failed";
+    close(clientfd);
+    m_clientFd = -1;
     return false;
   }
   m_clientFd = clientfd;
@@ -132,7 +186,9 @@ bool MprpcChannel::newConnect(const char* ip, uint16_t port, string* errMsg) {
 }
 
 //创建一个 RPC 客户端通道，保存目标服务端的 ip/port，并根据 connectNow 决定要不要立刻建立 TCP 连接。
-MprpcChannel::MprpcChannel(string ip, short port, bool connectNow) : m_ip(ip), m_port(port), m_clientFd(-1) {
+MprpcChannel::MprpcChannel(std::string ip, std::uint16_t port, bool connectNow,
+                           std::chrono::milliseconds ioTimeout)
+    : m_clientFd(-1), m_ip(std::move(ip)), m_port(port), m_ioTimeout(ioTimeout) {
   if (!connectNow) {//可以允许延迟连接
     return;
   }  

@@ -1,6 +1,8 @@
 //客户端Clerk 和 KVServer 通信
 #ifndef RAFTSERVERRPC_H
 #define RAFTSERVERRPC_H
+#include <chrono>
+#include <cstdint>
 #include <iostream>
 #include "kvServerRPC.pb.h"
 #include "mprpcchannel.h"
@@ -18,7 +20,8 @@ class raftServerRpcUtil {
   bool PutAppend(raftKVRpcProctoc::PutAppendArgs* args, raftKVRpcProctoc::PutAppendReply* reply);
   bool GetStatus(raftKVRpcProctoc::StatusReply* reply);
 
-  raftServerRpcUtil(std::string ip, short port);
+  raftServerRpcUtil(std::string ip, std::uint16_t port,
+                    std::chrono::milliseconds ioTimeout = std::chrono::milliseconds(300));
   ~raftServerRpcUtil();
 };
 

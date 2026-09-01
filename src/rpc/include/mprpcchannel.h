@@ -4,6 +4,8 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/service.h>
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <algorithm>  // 包含 std::generate_n() 和 std::generate() 函数的头文件
 #include <functional>
 #include <iostream>
@@ -21,12 +23,14 @@ class MprpcChannel : public google::protobuf::RpcChannel {
   void CallMethod(const google::protobuf::MethodDescriptor *method, google::protobuf::RpcController *controller,
                   const google::protobuf::Message *request, google::protobuf::Message *response,
                   google::protobuf::Closure *done) override;
-  MprpcChannel(string ip, short port, bool connectNow);
+  MprpcChannel(std::string ip, std::uint16_t port, bool connectNow,
+               std::chrono::milliseconds ioTimeout = std::chrono::milliseconds(300));
 
  private:
   int m_clientFd;
   const std::string m_ip;  //保存ip和端口，如果断了可以尝试重连
   const uint16_t m_port;
+  const std::chrono::milliseconds m_ioTimeout;
   bool newConnect(const char *ip, uint16_t port, string *errMsg);
 };
 

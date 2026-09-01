@@ -7,10 +7,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <cerrno>
+#include <chrono>
 #include <string>
 #include <vector>
 #include "kvServerRPC.pb.h"
-#include "mprpcconfig.h"
+
+enum class ClerkStatus { Ok, NotFound, TimedOut, Unavailable };
+
 class Clerk {
  private:
   std::vector<std::shared_ptr<raftServerRpcUtil>>m_servers; //// 保存所有 KVServer 节点的 RPC 客户端 //todo：全部初始化为-1，表示没有连接上
@@ -22,14 +25,23 @@ class Clerk {
     return std::to_string(rand()) + std::to_string(rand()) + std::to_string(rand()) + std::to_string(rand());
   }  
   //    MakeClerk  todo
-  void PutAppend(std::string key, std::string value, std::string op);
+  ClerkStatus PutAppendUntil(const std::string& key, const std::string& value,
+                             const std::string& op,
+                             std::chrono::steady_clock::time_point deadline);
 
  public:
   //对外暴露的三个功能和初始化
-  void Init(std::string configFileName);
+  void Init(std::string configFileName,
+            std::chrono::milliseconds ioTimeout = std::chrono::milliseconds(300));
   std::string Get(std::string key);
   void Put(std::string key, std::string value);
   void Append(std::string key, std::string value);
+  ClerkStatus GetUntil(const std::string& key, std::string* value,
+                       std::chrono::steady_clock::time_point deadline);
+  ClerkStatus PutUntil(const std::string& key, const std::string& value,
+                       std::chrono::steady_clock::time_point deadline);
+  ClerkStatus AppendUntil(const std::string& key, const std::string& value,
+                          std::chrono::steady_clock::time_point deadline);
 
  public:
   Clerk();
