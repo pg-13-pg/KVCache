@@ -51,3 +51,24 @@ set_tests_properties(
   thread_join
   PROPERTIES TIMEOUT 5
 )
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  function(add_raft_integration_test test_name scenario_name)
+    add_test(
+      NAME ${test_name}
+      COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/integration/raft_cluster_test.py
+              --scenario ${scenario_name}
+              --raft-node $<TARGET_FILE:raftNode>
+              --kvctl $<TARGET_FILE:kvctl>
+              --artifact-root ${CMAKE_CURRENT_BINARY_DIR}/artifacts)
+    set_tests_properties(${test_name} PROPERTIES
+      LABELS raft_integration
+      TIMEOUT 120
+      SKIP_RETURN_CODE 77)
+  endfunction()
+  add_raft_integration_test(raft_integration_failover failover)
+else()
+  message(STATUS "Python 3 not found: Raft integration tests unavailable")
+endif()

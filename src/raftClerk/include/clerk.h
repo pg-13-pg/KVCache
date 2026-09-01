@@ -7,7 +7,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <cerrno>
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include "kvServerRPC.pb.h"
@@ -22,7 +24,10 @@ class Clerk {
   int m_recentLeaderId;  //记录最近一次成功联系的 Leader
   //用于返回随机的clientId
   std::string Uuid() {
-    return std::to_string(rand()) + std::to_string(rand()) + std::to_string(rand()) + std::to_string(rand());
+    static std::atomic<std::uint64_t> sequence{0};
+    const auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+    return std::to_string(getpid()) + "-" + std::to_string(timestamp) + "-" +
+           std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
   }  
   //    MakeClerk  todo
   ClerkStatus PutAppendUntil(const std::string& key, const std::string& value,
