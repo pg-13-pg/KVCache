@@ -141,7 +141,9 @@ void Raft::applierTicker() {
 }
 //todo：判断是否可以安装快照，待优化
 bool Raft::CondInstallSnapshot(int lastIncludedTerm, int lastIncludedIndex, std::string snapshot) {
-  return true;
+  std::lock_guard<std::mutex> lock(m_mtx);
+  return lastIncludedIndex == m_lastSnapshotIncludeIndex &&
+         lastIncludedTerm == m_lastSnapshotIncludeTerm;
 }
 
 
@@ -361,6 +363,18 @@ void Raft::GetState(int* term, bool* isLeader) {
   *isLeader = (m_status == Leader);
 }
 
+RaftStatus Raft::GetStatusSnapshot() {
+  std::lock_guard<std::mutex> lock(m_mtx);
+  RaftRole role = RaftRole::Follower;
+  if (m_status == Candidate) {
+    role = RaftRole::Candidate;
+  } else if (m_status == Leader) {
+    role = RaftRole::Leader;
+  }
+  return {m_me, m_currentTerm, role, m_commitIndex, m_lastApplied,
+          m_lastSnapshotIncludeIndex, m_lastSnapshotIncludeTerm};
+}
+
 //真正的安装快照函数
 void Raft::InstallSnapshot(const raftRpcProctoc::InstallSnapshotRequest* args,
                            raftRpcProctoc::InstallSnapshotResponse* reply) {
@@ -380,34 +394,37 @@ void Raft::InstallSnapshot(const raftRpcProctoc::InstallSnapshotRequest* args,
   }
   m_status = Follower;  //==时 candidate也要变成follower，防止出现两个leader的情况
   m_lastResetElectionTime = now();
-  if (args->lastsnapshotincludeindex() <= m_lastSnapshotIncludeIndex) {//leader快照落后，直接返回
-   
+  reply->set_term(m_currentTerm);
+
+  std::vector<kvraft::LogPosition> positions;
+  positions.reserve(m_logs.size());
+  for (const auto& log : m_logs) {
+    positions.push_back({log.logindex(), log.logterm()});
+  }
+  const auto plan = kvraft::PlanSnapshotInstall(
+      m_lastSnapshotIncludeIndex, m_lastSnapshotIncludeTerm, positions,
+      args->lastsnapshotincludeindex(), args->lastsnapshotincludeterm());
+  if (plan.decision == kvraft::SnapshotDecision::Stale ||
+      plan.decision == kvraft::SnapshotDecision::Idempotent) {
     return;
   }
-  //直接更新快照，截断日志，修改commitIndex和lastApplied
-  //截断日志包括：fllower日志长了，截断一部分，日志短了，全部清空，其实两个是一种情况
-  auto lastLogIndex = getLastLogIndex();
-  if (lastLogIndex > args->lastsnapshotincludeindex()) {
-    m_logs.erase(m_logs.begin(), m_logs.begin() + getSlicesIndexFromLogIndex(args->lastsnapshotincludeindex()) + 1);
-  } else {
-    m_logs.clear();
+  if (plan.decision == kvraft::SnapshotDecision::Conflict) {
+    throw kvraft::PersistenceError("snapshot term conflicts at installed index");
   }
-  //更新commitIndex和lastApplied，快照的index和term  索引：应用 < 提交 < 快照包含的index < 日志索引 
-  m_commitIndex = std::max(m_commitIndex, args->lastsnapshotincludeindex());
-  m_lastApplied = std::max(m_lastApplied, args->lastsnapshotincludeindex());
+
+  m_logs.erase(m_logs.begin(), m_logs.begin() + plan.firstRetainedLog);
   m_lastSnapshotIncludeIndex = args->lastsnapshotincludeindex();
   m_lastSnapshotIncludeTerm = args->lastsnapshotincludeterm();
-  reply->set_term(m_currentTerm);
-   //向上交付快照，交付的方式是通过applyChan这个线程安全的队列交付给上层状态机/KVServer
+  m_persister->Save(persistData(), args->data());
+  m_commitIndex = std::max(m_commitIndex, args->lastsnapshotincludeindex());
+  m_lastApplied = std::max(m_lastApplied, args->lastsnapshotincludeindex());
+
   ApplyMsg msg; 
   msg.SnapshotValid = true;
   msg.Snapshot = args->data(); //快照
   msg.SnapshotTerm = args->lastsnapshotincludeterm();
   msg.SnapshotIndex = args->lastsnapshotincludeindex();
-  std::thread t(&Raft::pushMsgToKvServer, this, msg);  // 创建新线程并执行b函数，并传递参数
-  t.detach();
-  //持久化状态和日志
-  m_persister->Save(persistData(), args->data()); 
+  applyChan->Push(msg);
 }
 
 void Raft::pushMsgToKvServer(ApplyMsg msg) { applyChan->Push(msg); }
@@ -711,15 +728,27 @@ bool Raft::sendRequestVote(int server, std::shared_ptr<raftRpcProctoc::RequestVo
     DPrintf("[func-sendRequestVote rf{%d}] elect success  ,current term:{%d} ,lastLogIndex:{%d}\n", m_me, m_currentTerm,
             getLastLogIndex());
 
-    int lastLogIndex = getLastLogIndex(); //获取当前raft的最后一个日志的index，这里的日志指的是客户端的请求日志
+    int lastLogIndex = getLastLogIndex(); //获取追加no-op前的最后一个日志index
     for (int i = 0; i < m_nextIndex.size(); i++) {
       m_nextIndex[i] = lastLogIndex + 1;  //下一次要发送给节点 i 的日志下标
       m_matchIndex[i] = 0;                //每换一个领导都是从0开始，见fig2
     }
+
+    Op noOp;
+    noOp.Operation = "NoOp";
+    noOp.Key.clear();
+    noOp.Value.clear();
+    noOp.ClientId = "raft-internal";
+    noOp.RequestId = m_currentTerm;
+    raftRpcProctoc::LogEntry noOpEntry;
+    noOpEntry.set_command(noOp.asString());
+    noOpEntry.set_logterm(m_currentTerm);
+    noOpEntry.set_logindex(lastLogIndex + 1);
+    m_logs.emplace_back(noOpEntry);
+    persist();
+
     std::thread t(&Raft::doHeartBeat, this);  //马上向其他节点宣告自己就是leader
     t.detach();
-
-    persist();
   }
   return true;
 }
@@ -907,10 +936,8 @@ void Raft::init(std::vector<std::shared_ptr<RaftRpcUtil>> peers, int me, std::sh
 
   // initialize from state persisted before a crash 从崩溃前持久化保存的状态中恢复初始化
   readPersist(m_persister->ReadRaftState());
-  if (m_lastSnapshotIncludeIndex > 0) {  //从持久化状态中恢复了快照，那么就要把日志和状态都恢复到快照的状态
-    m_lastApplied = m_lastSnapshotIncludeIndex;
-    // rf.commitIndex = rf.lastSnapshotIncludeIndex   todo ：崩溃恢复为何不能读取commitIndex
-  }
+  m_commitIndex = m_lastSnapshotIncludeIndex;
+  m_lastApplied = m_lastSnapshotIncludeIndex;
   //
   DPrintf("[Init&ReInit] Server %d, term %d, lastSnapshotIncludeIndex {%d} , lastSnapshotIncludeTerm {%d}", m_me,
           m_currentTerm, m_lastSnapshotIncludeIndex, m_lastSnapshotIncludeTerm);

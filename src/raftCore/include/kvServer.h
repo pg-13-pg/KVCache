@@ -56,6 +56,7 @@ class KvServer : raftKVRpcProctoc::kvServerRpc {
   void PutAppend(const raftKVRpcProctoc::PutAppendArgs *args, raftKVRpcProctoc::PutAppendReply *reply);
   //将 GetArgs 改为rpc调用的，因为是远程客户端，即服务器宕机对客户端来说是无感的
   void Get(const raftKVRpcProctoc::GetArgs *args, raftKVRpcProctoc::GetReply *reply);  
+  void GetStatus(raftKVRpcProctoc::StatusReply *reply);
   
   //一直等待raft传来的applyChan，然后执行applyChan中的命令，并且把结果返回给等待的线程
   void ReadRaftApplyCommandLoop();
@@ -74,6 +75,11 @@ class KvServer : raftKVRpcProctoc::kvServerRpc {
 
   void Get(google::protobuf::RpcController *controller, const ::raftKVRpcProctoc::GetArgs *request,
            ::raftKVRpcProctoc::GetReply *response, ::google::protobuf::Closure *done) override;
+
+  void GetStatus(google::protobuf::RpcController *controller,
+                 const ::raftKVRpcProctoc::StatusArgs *request,
+                 ::raftKVRpcProctoc::StatusReply *response,
+                 ::google::protobuf::Closure *done) override;
 
   
  private:

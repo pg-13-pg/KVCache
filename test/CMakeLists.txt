@@ -31,6 +31,11 @@ add_executable(test_snapshot_policy snapshot_policy.cpp ../src/raftCore/snapshot
 add_test(NAME snapshot_policy COMMAND $<TARGET_FILE:test_snapshot_policy>)
 set_tests_properties(skip_list_snapshot snapshot_policy PROPERTIES TIMEOUT 5)
 
+add_executable(test_status_proto status_proto.cpp ${src_raftRpcPro})
+target_link_libraries(test_status_proto PRIVATE protobuf)
+add_test(NAME status_proto COMMAND $<TARGET_FILE:test_status_proto>)
+set_tests_properties(status_proto PROPERTIES TIMEOUT 5)
+
 add_test(NAME scheduler_plain_sleep COMMAND $<TARGET_FILE:test_scheduler>)
 set_tests_properties(scheduler_plain_sleep PROPERTIES TIMEOUT 20)
 

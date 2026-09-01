@@ -24,3 +24,10 @@ bool raftServerRpcUtil::PutAppend(raftKVRpcProctoc::PutAppendArgs *args, raftKVR
   }
   return !controller.Failed();
 }
+
+bool raftServerRpcUtil::GetStatus(raftKVRpcProctoc::StatusReply *reply) {
+  raftKVRpcProctoc::StatusArgs args;
+  MprpcController controller;
+  stub->GetStatus(&controller, &args, reply, nullptr);
+  return !controller.Failed();
+}

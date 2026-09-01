@@ -23,12 +23,14 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
+#include <google/protobuf/generated_message_bases.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/metadata_lite.h>
 #include <google/protobuf/generated_message_reflection.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>  // IWYU pragma: export
 #include <google/protobuf/extension_set.h>  // IWYU pragma: export
+#include <google/protobuf/generated_enum_reflection.h>
 #include <google/protobuf/service.h>
 #include <google/protobuf/unknown_field_set.h>
 // @@protoc_insertion_point(includes)
@@ -58,15 +60,49 @@ extern PutAppendArgsDefaultTypeInternal _PutAppendArgs_default_instance_;
 class PutAppendReply;
 struct PutAppendReplyDefaultTypeInternal;
 extern PutAppendReplyDefaultTypeInternal _PutAppendReply_default_instance_;
+class StatusArgs;
+struct StatusArgsDefaultTypeInternal;
+extern StatusArgsDefaultTypeInternal _StatusArgs_default_instance_;
+class StatusReply;
+struct StatusReplyDefaultTypeInternal;
+extern StatusReplyDefaultTypeInternal _StatusReply_default_instance_;
 }  // namespace raftKVRpcProctoc
 PROTOBUF_NAMESPACE_OPEN
 template<> ::raftKVRpcProctoc::GetArgs* Arena::CreateMaybeMessage<::raftKVRpcProctoc::GetArgs>(Arena*);
 template<> ::raftKVRpcProctoc::GetReply* Arena::CreateMaybeMessage<::raftKVRpcProctoc::GetReply>(Arena*);
 template<> ::raftKVRpcProctoc::PutAppendArgs* Arena::CreateMaybeMessage<::raftKVRpcProctoc::PutAppendArgs>(Arena*);
 template<> ::raftKVRpcProctoc::PutAppendReply* Arena::CreateMaybeMessage<::raftKVRpcProctoc::PutAppendReply>(Arena*);
+template<> ::raftKVRpcProctoc::StatusArgs* Arena::CreateMaybeMessage<::raftKVRpcProctoc::StatusArgs>(Arena*);
+template<> ::raftKVRpcProctoc::StatusReply* Arena::CreateMaybeMessage<::raftKVRpcProctoc::StatusReply>(Arena*);
 PROTOBUF_NAMESPACE_CLOSE
 namespace raftKVRpcProctoc {
 
+enum NodeRole : int {
+  FOLLOWER = 0,
+  CANDIDATE = 1,
+  LEADER = 2,
+  NodeRole_INT_MIN_SENTINEL_DO_NOT_USE_ = std::numeric_limits<int32_t>::min(),
+  NodeRole_INT_MAX_SENTINEL_DO_NOT_USE_ = std::numeric_limits<int32_t>::max()
+};
+bool NodeRole_IsValid(int value);
+constexpr NodeRole NodeRole_MIN = FOLLOWER;
+constexpr NodeRole NodeRole_MAX = LEADER;
+constexpr int NodeRole_ARRAYSIZE = NodeRole_MAX + 1;
+
+const ::PROTOBUF_NAMESPACE_ID::EnumDescriptor* NodeRole_descriptor();
+template<typename T>
+inline const std::string& NodeRole_Name(T enum_t_value) {
+  static_assert(::std::is_same<T, NodeRole>::value ||
+    ::std::is_integral<T>::value,
+    "Incorrect type passed to function NodeRole_Name.");
+  return ::PROTOBUF_NAMESPACE_ID::internal::NameOfEnum(
+    NodeRole_descriptor(), enum_t_value);
+}
+inline bool NodeRole_Parse(
+    ::PROTOBUF_NAMESPACE_ID::ConstStringParam name, NodeRole* value) {
+  return ::PROTOBUF_NAMESPACE_ID::internal::ParseNamedEnum<NodeRole>(
+    NodeRole_descriptor(), name, value);
+}
 // ===================================================================
 
 class GetArgs final :
@@ -781,6 +817,338 @@ class PutAppendReply final :
   union { Impl_ _impl_; };
   friend struct ::TableStruct_kvServerRPC_2eproto;
 };
+// -------------------------------------------------------------------
+
+class StatusArgs final :
+    public ::PROTOBUF_NAMESPACE_ID::internal::ZeroFieldsBase /* @@protoc_insertion_point(class_definition:raftKVRpcProctoc.StatusArgs) */ {
+ public:
+  inline StatusArgs() : StatusArgs(nullptr) {}
+  explicit PROTOBUF_CONSTEXPR StatusArgs(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized);
+
+  StatusArgs(const StatusArgs& from);
+  StatusArgs(StatusArgs&& from) noexcept
+    : StatusArgs() {
+    *this = ::std::move(from);
+  }
+
+  inline StatusArgs& operator=(const StatusArgs& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline StatusArgs& operator=(StatusArgs&& from) noexcept {
+    if (this == &from) return *this;
+    if (GetOwningArena() == from.GetOwningArena()
+  #ifdef PROTOBUF_FORCE_COPY_IN_MOVE
+        && GetOwningArena() != nullptr
+  #endif  // !PROTOBUF_FORCE_COPY_IN_MOVE
+    ) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const StatusArgs& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const StatusArgs* internal_default_instance() {
+    return reinterpret_cast<const StatusArgs*>(
+               &_StatusArgs_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    4;
+
+  friend void swap(StatusArgs& a, StatusArgs& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(StatusArgs* other) {
+    if (other == this) return;
+  #ifdef PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() != nullptr &&
+        GetOwningArena() == other->GetOwningArena()) {
+   #else  // PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() == other->GetOwningArena()) {
+  #endif  // !PROTOBUF_FORCE_COPY_IN_SWAP
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(StatusArgs* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetOwningArena() == other->GetOwningArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  StatusArgs* New(::PROTOBUF_NAMESPACE_ID::Arena* arena = nullptr) const final {
+    return CreateMaybeMessage<StatusArgs>(arena);
+  }
+  using ::PROTOBUF_NAMESPACE_ID::internal::ZeroFieldsBase::CopyFrom;
+  inline void CopyFrom(const StatusArgs& from) {
+    ::PROTOBUF_NAMESPACE_ID::internal::ZeroFieldsBase::CopyImpl(*this, from);
+  }
+  using ::PROTOBUF_NAMESPACE_ID::internal::ZeroFieldsBase::MergeFrom;
+  void MergeFrom(const StatusArgs& from) {
+    ::PROTOBUF_NAMESPACE_ID::internal::ZeroFieldsBase::MergeImpl(*this, from);
+  }
+  public:
+
+  private:
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "raftKVRpcProctoc.StatusArgs";
+  }
+  protected:
+  explicit StatusArgs(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                       bool is_message_owned = false);
+  public:
+
+  static const ClassData _class_data_;
+  const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*GetClassData() const final;
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // @@protoc_insertion_point(class_scope:raftKVRpcProctoc.StatusArgs)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  struct Impl_ {
+  };
+  friend struct ::TableStruct_kvServerRPC_2eproto;
+};
+// -------------------------------------------------------------------
+
+class StatusReply final :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:raftKVRpcProctoc.StatusReply) */ {
+ public:
+  inline StatusReply() : StatusReply(nullptr) {}
+  ~StatusReply() override;
+  explicit PROTOBUF_CONSTEXPR StatusReply(::PROTOBUF_NAMESPACE_ID::internal::ConstantInitialized);
+
+  StatusReply(const StatusReply& from);
+  StatusReply(StatusReply&& from) noexcept
+    : StatusReply() {
+    *this = ::std::move(from);
+  }
+
+  inline StatusReply& operator=(const StatusReply& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline StatusReply& operator=(StatusReply&& from) noexcept {
+    if (this == &from) return *this;
+    if (GetOwningArena() == from.GetOwningArena()
+  #ifdef PROTOBUF_FORCE_COPY_IN_MOVE
+        && GetOwningArena() != nullptr
+  #endif  // !PROTOBUF_FORCE_COPY_IN_MOVE
+    ) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const StatusReply& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const StatusReply* internal_default_instance() {
+    return reinterpret_cast<const StatusReply*>(
+               &_StatusReply_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    5;
+
+  friend void swap(StatusReply& a, StatusReply& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(StatusReply* other) {
+    if (other == this) return;
+  #ifdef PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() != nullptr &&
+        GetOwningArena() == other->GetOwningArena()) {
+   #else  // PROTOBUF_FORCE_COPY_IN_SWAP
+    if (GetOwningArena() == other->GetOwningArena()) {
+  #endif  // !PROTOBUF_FORCE_COPY_IN_SWAP
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(StatusReply* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetOwningArena() == other->GetOwningArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  StatusReply* New(::PROTOBUF_NAMESPACE_ID::Arena* arena = nullptr) const final {
+    return CreateMaybeMessage<StatusReply>(arena);
+  }
+  using ::PROTOBUF_NAMESPACE_ID::Message::CopyFrom;
+  void CopyFrom(const StatusReply& from);
+  using ::PROTOBUF_NAMESPACE_ID::Message::MergeFrom;
+  void MergeFrom( const StatusReply& from) {
+    StatusReply::MergeImpl(*this, from);
+  }
+  private:
+  static void MergeImpl(::PROTOBUF_NAMESPACE_ID::Message& to_msg, const ::PROTOBUF_NAMESPACE_ID::Message& from_msg);
+  public:
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  uint8_t* _InternalSerialize(
+      uint8_t* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::PROTOBUF_NAMESPACE_ID::Arena* arena, bool is_message_owned);
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(StatusReply* other);
+
+  private:
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "raftKVRpcProctoc.StatusReply";
+  }
+  protected:
+  explicit StatusReply(::PROTOBUF_NAMESPACE_ID::Arena* arena,
+                       bool is_message_owned = false);
+  public:
+
+  static const ClassData _class_data_;
+  const ::PROTOBUF_NAMESPACE_ID::Message::ClassData*GetClassData() const final;
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kNodeIdFieldNumber = 1,
+    kTermFieldNumber = 2,
+    kRoleFieldNumber = 3,
+    kCommitIndexFieldNumber = 4,
+    kLastAppliedFieldNumber = 5,
+    kSnapshotIndexFieldNumber = 6,
+    kSnapshotTermFieldNumber = 7,
+  };
+  // int32 node_id = 1;
+  void clear_node_id();
+  int32_t node_id() const;
+  void set_node_id(int32_t value);
+  private:
+  int32_t _internal_node_id() const;
+  void _internal_set_node_id(int32_t value);
+  public:
+
+  // int32 term = 2;
+  void clear_term();
+  int32_t term() const;
+  void set_term(int32_t value);
+  private:
+  int32_t _internal_term() const;
+  void _internal_set_term(int32_t value);
+  public:
+
+  // .raftKVRpcProctoc.NodeRole role = 3;
+  void clear_role();
+  ::raftKVRpcProctoc::NodeRole role() const;
+  void set_role(::raftKVRpcProctoc::NodeRole value);
+  private:
+  ::raftKVRpcProctoc::NodeRole _internal_role() const;
+  void _internal_set_role(::raftKVRpcProctoc::NodeRole value);
+  public:
+
+  // int32 commit_index = 4;
+  void clear_commit_index();
+  int32_t commit_index() const;
+  void set_commit_index(int32_t value);
+  private:
+  int32_t _internal_commit_index() const;
+  void _internal_set_commit_index(int32_t value);
+  public:
+
+  // int32 last_applied = 5;
+  void clear_last_applied();
+  int32_t last_applied() const;
+  void set_last_applied(int32_t value);
+  private:
+  int32_t _internal_last_applied() const;
+  void _internal_set_last_applied(int32_t value);
+  public:
+
+  // int32 snapshot_index = 6;
+  void clear_snapshot_index();
+  int32_t snapshot_index() const;
+  void set_snapshot_index(int32_t value);
+  private:
+  int32_t _internal_snapshot_index() const;
+  void _internal_set_snapshot_index(int32_t value);
+  public:
+
+  // int32 snapshot_term = 7;
+  void clear_snapshot_term();
+  int32_t snapshot_term() const;
+  void set_snapshot_term(int32_t value);
+  private:
+  int32_t _internal_snapshot_term() const;
+  void _internal_set_snapshot_term(int32_t value);
+  public:
+
+  // @@protoc_insertion_point(class_scope:raftKVRpcProctoc.StatusReply)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  struct Impl_ {
+    int32_t node_id_;
+    int32_t term_;
+    int role_;
+    int32_t commit_index_;
+    int32_t last_applied_;
+    int32_t snapshot_index_;
+    int32_t snapshot_term_;
+    mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_kvServerRPC_2eproto;
+};
 // ===================================================================
 
 class kvServerRpc_Stub;
@@ -803,6 +1171,10 @@ class kvServerRpc : public ::PROTOBUF_NAMESPACE_ID::Service {
   virtual void Get(::PROTOBUF_NAMESPACE_ID::RpcController* controller,
                        const ::raftKVRpcProctoc::GetArgs* request,
                        ::raftKVRpcProctoc::GetReply* response,
+                       ::google::protobuf::Closure* done);
+  virtual void GetStatus(::PROTOBUF_NAMESPACE_ID::RpcController* controller,
+                       const ::raftKVRpcProctoc::StatusArgs* request,
+                       ::raftKVRpcProctoc::StatusReply* response,
                        ::google::protobuf::Closure* done);
 
   // implements Service ----------------------------------------------
@@ -840,6 +1212,10 @@ class kvServerRpc_Stub : public kvServerRpc {
   void Get(::PROTOBUF_NAMESPACE_ID::RpcController* controller,
                        const ::raftKVRpcProctoc::GetArgs* request,
                        ::raftKVRpcProctoc::GetReply* response,
+                       ::google::protobuf::Closure* done);
+  void GetStatus(::PROTOBUF_NAMESPACE_ID::RpcController* controller,
+                       const ::raftKVRpcProctoc::StatusArgs* request,
+                       ::raftKVRpcProctoc::StatusReply* response,
                        ::google::protobuf::Closure* done);
  private:
   ::PROTOBUF_NAMESPACE_ID::RpcChannel* channel_;
@@ -1361,9 +1737,161 @@ inline void PutAppendReply::set_allocated_err(std::string* err) {
   // @@protoc_insertion_point(field_set_allocated:raftKVRpcProctoc.PutAppendReply.Err)
 }
 
+// -------------------------------------------------------------------
+
+// StatusArgs
+
+// -------------------------------------------------------------------
+
+// StatusReply
+
+// int32 node_id = 1;
+inline void StatusReply::clear_node_id() {
+  _impl_.node_id_ = 0;
+}
+inline int32_t StatusReply::_internal_node_id() const {
+  return _impl_.node_id_;
+}
+inline int32_t StatusReply::node_id() const {
+  // @@protoc_insertion_point(field_get:raftKVRpcProctoc.StatusReply.node_id)
+  return _internal_node_id();
+}
+inline void StatusReply::_internal_set_node_id(int32_t value) {
+
+  _impl_.node_id_ = value;
+}
+inline void StatusReply::set_node_id(int32_t value) {
+  _internal_set_node_id(value);
+  // @@protoc_insertion_point(field_set:raftKVRpcProctoc.StatusReply.node_id)
+}
+
+// int32 term = 2;
+inline void StatusReply::clear_term() {
+  _impl_.term_ = 0;
+}
+inline int32_t StatusReply::_internal_term() const {
+  return _impl_.term_;
+}
+inline int32_t StatusReply::term() const {
+  // @@protoc_insertion_point(field_get:raftKVRpcProctoc.StatusReply.term)
+  return _internal_term();
+}
+inline void StatusReply::_internal_set_term(int32_t value) {
+
+  _impl_.term_ = value;
+}
+inline void StatusReply::set_term(int32_t value) {
+  _internal_set_term(value);
+  // @@protoc_insertion_point(field_set:raftKVRpcProctoc.StatusReply.term)
+}
+
+// .raftKVRpcProctoc.NodeRole role = 3;
+inline void StatusReply::clear_role() {
+  _impl_.role_ = 0;
+}
+inline ::raftKVRpcProctoc::NodeRole StatusReply::_internal_role() const {
+  return static_cast< ::raftKVRpcProctoc::NodeRole >(_impl_.role_);
+}
+inline ::raftKVRpcProctoc::NodeRole StatusReply::role() const {
+  // @@protoc_insertion_point(field_get:raftKVRpcProctoc.StatusReply.role)
+  return _internal_role();
+}
+inline void StatusReply::_internal_set_role(::raftKVRpcProctoc::NodeRole value) {
+
+  _impl_.role_ = value;
+}
+inline void StatusReply::set_role(::raftKVRpcProctoc::NodeRole value) {
+  _internal_set_role(value);
+  // @@protoc_insertion_point(field_set:raftKVRpcProctoc.StatusReply.role)
+}
+
+// int32 commit_index = 4;
+inline void StatusReply::clear_commit_index() {
+  _impl_.commit_index_ = 0;
+}
+inline int32_t StatusReply::_internal_commit_index() const {
+  return _impl_.commit_index_;
+}
+inline int32_t StatusReply::commit_index() const {
+  // @@protoc_insertion_point(field_get:raftKVRpcProctoc.StatusReply.commit_index)
+  return _internal_commit_index();
+}
+inline void StatusReply::_internal_set_commit_index(int32_t value) {
+
+  _impl_.commit_index_ = value;
+}
+inline void StatusReply::set_commit_index(int32_t value) {
+  _internal_set_commit_index(value);
+  // @@protoc_insertion_point(field_set:raftKVRpcProctoc.StatusReply.commit_index)
+}
+
+// int32 last_applied = 5;
+inline void StatusReply::clear_last_applied() {
+  _impl_.last_applied_ = 0;
+}
+inline int32_t StatusReply::_internal_last_applied() const {
+  return _impl_.last_applied_;
+}
+inline int32_t StatusReply::last_applied() const {
+  // @@protoc_insertion_point(field_get:raftKVRpcProctoc.StatusReply.last_applied)
+  return _internal_last_applied();
+}
+inline void StatusReply::_internal_set_last_applied(int32_t value) {
+
+  _impl_.last_applied_ = value;
+}
+inline void StatusReply::set_last_applied(int32_t value) {
+  _internal_set_last_applied(value);
+  // @@protoc_insertion_point(field_set:raftKVRpcProctoc.StatusReply.last_applied)
+}
+
+// int32 snapshot_index = 6;
+inline void StatusReply::clear_snapshot_index() {
+  _impl_.snapshot_index_ = 0;
+}
+inline int32_t StatusReply::_internal_snapshot_index() const {
+  return _impl_.snapshot_index_;
+}
+inline int32_t StatusReply::snapshot_index() const {
+  // @@protoc_insertion_point(field_get:raftKVRpcProctoc.StatusReply.snapshot_index)
+  return _internal_snapshot_index();
+}
+inline void StatusReply::_internal_set_snapshot_index(int32_t value) {
+
+  _impl_.snapshot_index_ = value;
+}
+inline void StatusReply::set_snapshot_index(int32_t value) {
+  _internal_set_snapshot_index(value);
+  // @@protoc_insertion_point(field_set:raftKVRpcProctoc.StatusReply.snapshot_index)
+}
+
+// int32 snapshot_term = 7;
+inline void StatusReply::clear_snapshot_term() {
+  _impl_.snapshot_term_ = 0;
+}
+inline int32_t StatusReply::_internal_snapshot_term() const {
+  return _impl_.snapshot_term_;
+}
+inline int32_t StatusReply::snapshot_term() const {
+  // @@protoc_insertion_point(field_get:raftKVRpcProctoc.StatusReply.snapshot_term)
+  return _internal_snapshot_term();
+}
+inline void StatusReply::_internal_set_snapshot_term(int32_t value) {
+
+  _impl_.snapshot_term_ = value;
+}
+inline void StatusReply::set_snapshot_term(int32_t value) {
+  _internal_set_snapshot_term(value);
+  // @@protoc_insertion_point(field_set:raftKVRpcProctoc.StatusReply.snapshot_term)
+}
+
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------
@@ -1374,6 +1902,16 @@ inline void PutAppendReply::set_allocated_err(std::string* err) {
 // @@protoc_insertion_point(namespace_scope)
 
 }  // namespace raftKVRpcProctoc
+
+PROTOBUF_NAMESPACE_OPEN
+
+template <> struct is_proto_enum< ::raftKVRpcProctoc::NodeRole> : ::std::true_type {};
+template <>
+inline const EnumDescriptor* GetEnumDescriptor< ::raftKVRpcProctoc::NodeRole>() {
+  return ::raftKVRpcProctoc::NodeRole_descriptor();
+}
+
+PROTOBUF_NAMESPACE_CLOSE
 
 // @@protoc_insertion_point(global_scope)
 

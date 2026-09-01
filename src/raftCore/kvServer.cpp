@@ -131,6 +131,12 @@ void KvServer::GetCommandFromRaft(ApplyMsg message) {
   if (message.CommandIndex <= m_lastSnapShotRaftLogIndex) {
     return;
   }
+  if (op.Operation == "NoOp") {
+    if (m_maxRaftState != -1) {
+      IfNeedToSendSnapShotCommand(message.CommandIndex, 9);
+    }
+    return;
+  }
   if (!ifRequestDuplicate(op.ClientId, op.RequestId)) {
    
     if (op.Operation == "Put") {
@@ -312,6 +318,35 @@ void KvServer::Get(google::protobuf::RpcController *controller, const ::raftKVRp
   done->Run();
 }
 
+void KvServer::GetStatus(raftKVRpcProctoc::StatusReply *reply) {
+  const auto status = m_raftNode->GetStatusSnapshot();
+  reply->set_node_id(status.nodeId);
+  reply->set_term(status.term);
+  switch (status.role) {
+    case RaftRole::Follower:
+      reply->set_role(raftKVRpcProctoc::FOLLOWER);
+      break;
+    case RaftRole::Candidate:
+      reply->set_role(raftKVRpcProctoc::CANDIDATE);
+      break;
+    case RaftRole::Leader:
+      reply->set_role(raftKVRpcProctoc::LEADER);
+      break;
+  }
+  reply->set_commit_index(status.commitIndex);
+  reply->set_last_applied(status.lastApplied);
+  reply->set_snapshot_index(status.snapshotIndex);
+  reply->set_snapshot_term(status.snapshotTerm);
+}
+
+void KvServer::GetStatus(google::protobuf::RpcController *controller,
+                         const ::raftKVRpcProctoc::StatusArgs *request,
+                         ::raftKVRpcProctoc::StatusReply *response,
+                         ::google::protobuf::Closure *done) {
+  GetStatus(response);
+  done->Run();
+}
+
 //启动一个 KVServer 节点，同时启动它内部的 Raft 节点、RPC 服务、节点间连接、快照恢复、apply 监听循环。
 KvServer::KvServer(int me, int maxraftstate, std::string nodeInforFileName, short port) : m_skipList(6) {
   std::shared_ptr<Persister> persister = std::make_shared<Persister>(me);
@@ -379,4 +414,3 @@ KvServer::KvServer(int me, int maxraftstate, std::string nodeInforFileName, shor
   std::thread t2(&KvServer::ReadRaftApplyCommandLoop, this);  // 启动 KVServer 的 apply 消费循环
   t2.join();  //由于ReadRaftApplyCommandLoop一直不会结束，达到一直卡在这的目的（join：线程停在这里，等待t2线程结束）
 }
- 

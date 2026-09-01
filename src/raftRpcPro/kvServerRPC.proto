@@ -31,10 +31,28 @@ message PutAppendReply  {
   bytes Err = 1;
 }
 
+enum NodeRole {
+  FOLLOWER = 0;
+  CANDIDATE = 1;
+  LEADER = 2;
+}
+
+message StatusArgs {}
+
+message StatusReply {
+  int32 node_id = 1;
+  int32 term = 2;
+  NodeRole role = 3;
+  int32 commit_index = 4;
+  int32 last_applied = 5;
+  int32 snapshot_index = 6;
+  int32 snapshot_term = 7;
+}
+
 service kvServerRpc
 {
   rpc PutAppend(PutAppendArgs) returns(PutAppendReply);
   rpc Get (GetArgs) returns (GetReply);
+  rpc GetStatus(StatusArgs) returns(StatusReply);
 }
-
 

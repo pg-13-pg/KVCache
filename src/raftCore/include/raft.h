@@ -18,6 +18,7 @@
 #include "config.h"
 #include "monsoon.h"
 #include "raftRpcUtil.h"
+#include "snapshot_policy.h"
 #include "util.h"
 constexpr int Disconnected =0; // 方便网络分区的时候debug，网络异常的时候为disconnected，只要网络正常就为AppNormal，防止matchIndex[]数组异常减小
 constexpr int AppNormal = 1;
@@ -28,6 +29,18 @@ constexpr int Killed = 0;
 constexpr int Voted = 1;   //本轮已经投过票了
 constexpr int Expire = 2;  //投票（消息、竞选者）过期
 constexpr int Normal = 3;  //正常状态，可以投票
+
+enum class RaftRole { Follower, Candidate, Leader };
+
+struct RaftStatus {
+  int nodeId;
+  int term;
+  RaftRole role;
+  int commitIndex;
+  int lastApplied;
+  int snapshotIndex;
+  int snapshotTerm;
+};
 
 class Raft : public raftRpcProctoc::raftRpc {  //raftRPC.proto
  private:
@@ -77,6 +90,7 @@ class Raft : public raftRpcProctoc::raftRpc {  //raftRPC.proto
   int getNewCommandIndex();  // 获取新命令应该使用的日志index
   void getPrevLogInfo(int server, int *preIndex, int *preTerm);  // 获取发给指定节点的前一条日志信息
   void GetState(int *term, bool *isLeader);  // 查询当前任期以及本节点是否认为自己是leader
+  RaftStatus GetStatusSnapshot();
   void InstallSnapshot(const raftRpcProctoc::InstallSnapshotRequest *args,
                        raftRpcProctoc::InstallSnapshotResponse *reply);  // 处理leader发来的安装快照请求
   void leaderHearBeatTicker();  // leader心跳定时循环

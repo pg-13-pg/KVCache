@@ -16,6 +16,7 @@ class raftServerRpcUtil {
   //响应其他节点的方法
   bool Get(raftKVRpcProctoc::GetArgs* GetArgs, raftKVRpcProctoc::GetReply* reply);
   bool PutAppend(raftKVRpcProctoc::PutAppendArgs* args, raftKVRpcProctoc::PutAppendReply* reply);
+  bool GetStatus(raftKVRpcProctoc::StatusReply* reply);
 
   raftServerRpcUtil(std::string ip, short port);
   ~raftServerRpcUtil();
