@@ -85,6 +85,55 @@ mit6.824课程，如果你已经学习过该课程，那么已经不需要本项
 
 **多思考错误情况下的算法正确性**：Raft算法本身并不难理解，代码也并不多，但是简单的代码如何保证在复杂情况下的容错呢？需要在完成代码后多思考在代码不同运行阶段如果发生宕机等错误时的正确性。
 
+## 构建、运行与验证
+
+从仓库根目录配置并构建 Debug 版本：
+
+```bash
+cmake -S . -B cmake-build-debug -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build cmake-build-debug -j6
+```
+
+构建完成后，可执行文件位于 `bin/`。手动启动三节点集群时，先创建 `cluster.conf`：
+
+```text
+node0ip=127.0.0.1
+node0port=19000
+node1ip=127.0.0.1
+node1port=19001
+node2ip=127.0.0.1
+node2port=19002
+```
+
+准备三个独立数据目录，然后分别在三个终端中启动节点：
+
+```bash
+mkdir -p data/node-0 data/node-1 data/node-2
+./bin/raftNode --id 0 --config cluster.conf --data-dir data/node-0 --max-raft-state 1048576
+./bin/raftNode --id 1 --config cluster.conf --data-dir data/node-1 --max-raft-state 1048576
+./bin/raftNode --id 2 --config cluster.conf --data-dir data/node-2 --max-raft-state 1048576
+```
+
+另开终端操作集群：
+
+```bash
+./bin/kvctl --config cluster.conf --timeout-ms 5000 put hello world
+./bin/kvctl --config cluster.conf --timeout-ms 5000 get hello
+./bin/kvctl --config cluster.conf --timeout-ms 1000 status --node 0
+```
+
+节点停止后复用同一个 `--data-dir` 会从 WAL 和快照恢复；删除对应数据目录会创建一个全新节点，不能用于保留原集群状态。WAL 记录带版本、递增序号和 CRC32 校验，重启时会截断未写完整的尾记录、拒绝完整但损坏的记录，并在状态写入累积到上限后自动压缩为保留当前快照的检查点。
+
+运行全部测试、仅运行多进程 Raft 测试，以及连续运行十轮稳定性测试：
+
+```bash
+ctest --test-dir cmake-build-debug --output-on-failure
+ctest --test-dir cmake-build-debug -L raft_integration --output-on-failure
+ctest --test-dir cmake-build-debug -L raft_integration --repeat until-fail:10 --output-on-failure
+```
+
+集成测试成功时会清理临时目录；失败时 stderr 会打印保留的绝对路径。目录中包含 `cluster.conf`、每个节点的 `node-N.log`、`commands.log` 状态与客户端命令历史，以及各节点的 WAL，可用于复现和定位选举、复制或恢复问题。
+
 ## 项目大纲
 
 项目的大概框图如下：
@@ -170,5 +219,3 @@ mit6.824课程，如果你已经学习过该课程，那么已经不需要本项
     <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=youngyangyang04/KVstorageBaseRaft-cpp&type=Date" />
   </picture>
 </a>
-
-
