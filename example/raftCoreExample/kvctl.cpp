@@ -16,6 +16,7 @@ constexpr int kSuccess = 0;
 constexpr int kMissingKey = 2;
 constexpr int kUnavailable = 3;
 constexpr int kUsage = 64;
+constexpr auto kMaximumIoTimeout = std::chrono::milliseconds(1000);
 
 void PrintUsage(std::ostream& output) {
   output << "Usage:\n"
@@ -71,7 +72,7 @@ int Run(int argc, char** argv) {
 
   const std::string command = argv[index++];
   const auto requestedTimeout = std::chrono::milliseconds(timeoutMs);
-  const auto ioTimeout = std::min(requestedTimeout, std::chrono::milliseconds(300));
+  const auto ioTimeout = std::min(requestedTimeout, kMaximumIoTimeout);
   const auto deadline = std::chrono::steady_clock::now() + requestedTimeout;
   if (command == "put") {
     if (index + 2 != argc) throw std::runtime_error("put requires KEY VALUE");

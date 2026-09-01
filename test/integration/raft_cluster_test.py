@@ -4,6 +4,7 @@ import argparse
 import dataclasses
 import os
 import pathlib
+import shlex
 import shutil
 import signal
 import socket
@@ -26,6 +27,7 @@ class RaftCluster:
         self.kvctl = kvctl
         self.artifact_dir = artifact_dir
         self.config_path = artifact_dir / "cluster.conf"
+        self.command_log_path = artifact_dir / "commands.log"
         self.max_raft_state = 1024 * 1024
         self.nodes = [
             NodeProcess(node_id, artifact_dir / f"node-{node_id}",
@@ -106,13 +108,28 @@ class RaftCluster:
         return [node.node_id for node in self.nodes
                 if node.process is not None and node.process.poll() is None]
 
+    def _run_logged(self, command: list[str], timeout: float,
+                    check: bool = True) -> subprocess.CompletedProcess[str]:
+        started = time.monotonic()
+        completed = subprocess.run(command, text=True, capture_output=True,
+                                   timeout=timeout, check=False)
+        elapsed = time.monotonic() - started
+        with self.command_log_path.open("a", encoding="utf-8") as history:
+            history.write(
+                f"elapsed={elapsed:.3f}s rc={completed.returncode} "
+                f"command={shlex.join(command)}\n"
+                f"stdout={completed.stdout!r}\nstderr={completed.stderr!r}\n")
+        if check and completed.returncode != 0:
+            raise subprocess.CalledProcessError(
+                completed.returncode, command, completed.stdout,
+                completed.stderr)
+        return completed
+
     def status(self, node_id: int, timeout: float = 1.0) -> dict[str, str]:
-        completed = subprocess.run(
+        completed = self._run_logged(
             [self.kvctl, "--config", str(self.config_path),
              "--timeout-ms", str(int(timeout * 1000)),
-             "status", "--node", str(node_id)],
-            text=True, capture_output=True,
-            timeout=timeout + 1.0, check=True)
+             "status", "--node", str(node_id)], timeout + 1.0)
         return dict(field.split("=", 1)
                     for field in completed.stdout.strip().split())
 
@@ -141,10 +158,18 @@ class RaftCluster:
         raise AssertionError("leader election exceeded 10 seconds")
 
     def run_kvctl(self, arguments: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [self.kvctl, "--config", str(self.config_path),
-             "--timeout-ms", str(int(timeout * 1000)), *arguments],
-            text=True, capture_output=True, timeout=timeout + 1.0, check=True)
+        try:
+            return self._run_logged(
+                [self.kvctl, "--config", str(self.config_path),
+                 "--timeout-ms", str(int(timeout * 1000)), *arguments],
+                timeout + 1.0)
+        except subprocess.CalledProcessError:
+            for node_id in self.live_node_ids():
+                try:
+                    self.status(node_id)
+                except (subprocess.SubprocessError, OSError, ValueError, KeyError):
+                    pass
+            raise
 
     def put(self, key: str, value: str, timeout: float = 5.0) -> None:
         self.run_kvctl(["put", key, value], timeout)
@@ -179,9 +204,72 @@ class RaftCluster:
             time.sleep(0.05)
         raise AssertionError(f"node {node_id} did not catch up")
 
-    def cleanup(self) -> None:
+    def wait_node_snapshot(self, node_id: int, snapshot_index: int,
+                           last_applied: int, timeout: float = 10.0) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                state = self.status(node_id)
+                if (int(state["snapshot_index"]) >= snapshot_index and
+                        int(state["last_applied"]) >= last_applied):
+                    return
+            except (subprocess.SubprocessError, OSError, ValueError, KeyError):
+                pass
+            time.sleep(0.05)
+        raise AssertionError(f"node {node_id} did not install snapshot")
+
+    def stop_all(self, sig: signal.Signals = signal.SIGTERM) -> None:
         for node in self.nodes:
-            self.stop_node(node.node_id)
+            self.stop_node(node.node_id, sig)
+
+    def restart_all(self) -> None:
+        for node in self.nodes:
+            self.start_node(node.node_id)
+
+    def cleanup(self) -> None:
+        self.stop_all()
+
+
+def write_snapshot_workload(cluster: RaftCluster, prefix: str,
+                            start: int = 0, limit: int = 200,
+                            snapshot_after: int = 0) -> list[tuple[str, str]]:
+    written: list[tuple[str, str]] = []
+    for item in range(start, limit):
+        key = f"{prefix}-{item:03d}"
+        value = f"value-{item:03d}-" + chr(ord("a") + item % 26) * 128
+        cluster.put(key, value)
+        written.append((key, value))
+        try:
+            states = [cluster.status(node_id)
+                      for node_id in cluster.live_node_ids()]
+        except (subprocess.SubprocessError, OSError, ValueError, KeyError):
+            continue
+        if (states and all(int(state["snapshot_index"]) > snapshot_after
+                          for state in states)):
+            return written
+    raise AssertionError(f"snapshot did not advance beyond {snapshot_after}")
+
+
+def corrupt_final_wal_payload(wal_path: pathlib.Path) -> None:
+    data = bytearray(wal_path.read_bytes())
+    header_size = 28
+    offset = 0
+    final_payload: tuple[int, int] | None = None
+    while offset < len(data):
+        if len(data) - offset < header_size or data[offset:offset + 4] != b"KVRW":
+            raise AssertionError("WAL does not end at a complete record")
+        raft_length = int.from_bytes(data[offset + 16:offset + 20], "big")
+        snapshot_length = int.from_bytes(data[offset + 20:offset + 24], "big")
+        payload_length = raft_length + snapshot_length
+        record_end = offset + header_size + payload_length
+        if record_end > len(data):
+            raise AssertionError("WAL final record is incomplete")
+        final_payload = (offset + header_size, payload_length)
+        offset = record_end
+    if final_payload is None or final_payload[1] == 0:
+        raise AssertionError("WAL final record has no payload to corrupt")
+    data[final_payload[0]] ^= 0x01
+    wal_path.write_bytes(data)
 
 
 def scenario_failover(cluster: RaftCluster) -> None:
@@ -219,11 +307,127 @@ def scenario_failover(cluster: RaftCluster) -> None:
                                 int(target["last_applied"]))
 
 
+def scenario_restart(cluster: RaftCluster) -> None:
+    cluster.start_all()
+    leader, _ = cluster.wait_for_leader()
+    for item in range(100):
+        cluster.put(f"restart-{item:03d}", f"value-{item:03d}")
+    committed = int(cluster.status(leader)["commit_index"])
+    cluster.wait_all_applied(committed)
+
+    cluster.stop_all(signal.SIGKILL)
+    cluster.restart_all()
+    cluster.wait_for_leader()
+    cluster.wait_all_applied(committed)
+    for item in range(100):
+        actual = cluster.get(f"restart-{item:03d}")
+        if actual != f"value-{item:03d}":
+            raise AssertionError(f"restart lost key restart-{item:03d}")
+
+
+def scenario_snapshot_restart(cluster: RaftCluster) -> None:
+    cluster.max_raft_state = 4096
+    cluster.start_all()
+    cluster.wait_for_leader()
+    written = write_snapshot_workload(cluster, "snapshot-restart")
+    committed = max(int(cluster.status(node_id)["commit_index"])
+                    for node_id in cluster.live_node_ids())
+    cluster.wait_all_applied(committed)
+
+    cluster.stop_all(signal.SIGKILL)
+    cluster.restart_all()
+    cluster.wait_for_leader()
+    for index in sorted({0, len(written) // 2, len(written) - 1}):
+        key, expected = written[index]
+        if cluster.get(key) != expected:
+            raise AssertionError(f"snapshot restart lost key {key}")
+
+
+def scenario_snapshot_catchup(cluster: RaftCluster) -> None:
+    cluster.max_raft_state = 4096
+    cluster.start_all()
+    leader, _ = cluster.wait_for_leader()
+    initial = write_snapshot_workload(cluster, "snapshot-catchup", limit=40)
+    leader_state = cluster.status(leader)
+    cluster.wait_all_applied(int(leader_state["commit_index"]))
+
+    follower = next(node_id for node_id in cluster.live_node_ids()
+                    if node_id != leader)
+    follower_applied = int(cluster.status(follower)["last_applied"])
+    cluster.stop_node(follower, signal.SIGKILL)
+    additional = write_snapshot_workload(
+        cluster, "snapshot-catchup", start=len(initial),
+        snapshot_after=follower_applied)
+
+    leader, _ = cluster.wait_for_leader()
+    target = cluster.status(leader)
+    cluster.restart_node(follower)
+    cluster.wait_node_snapshot(follower, int(target["snapshot_index"]),
+                               int(target["last_applied"]))
+
+    cluster.stop_node(leader, signal.SIGKILL)
+    cluster.wait_for_leader()
+    for key, expected in initial + additional:
+        if cluster.get(key) != expected:
+            raise AssertionError(f"snapshot catchup lost key {key}")
+
+
+def scenario_wal_tail(cluster: RaftCluster) -> None:
+    cluster.start_all()
+    leader, _ = cluster.wait_for_leader()
+    for item in range(20):
+        cluster.put(f"wal-tail-{item:03d}", f"value-{item:03d}")
+    target = cluster.status(leader)
+    cluster.wait_all_applied(int(target["commit_index"]))
+
+    follower = next(node_id for node_id in cluster.live_node_ids()
+                    if node_id != leader)
+    cluster.stop_node(follower, signal.SIGKILL)
+    wal_path = cluster.nodes[follower].data_dir / "raft.wal"
+    with wal_path.open("ab") as wal:
+        wal.write(b"KVRW\x00\x01")
+    cluster.restart_node(follower)
+    cluster.wait_node_caught_up(follower, int(target["commit_index"]),
+                                int(target["last_applied"]))
+
+    cluster.stop_node(follower, signal.SIGKILL)
+    corrupt_dir = cluster.artifact_dir / "corrupt-node"
+    corrupt_dir.mkdir()
+    corrupt_wal = corrupt_dir / "raft.wal"
+    shutil.copy2(wal_path, corrupt_wal)
+    corrupt_final_wal_payload(corrupt_wal)
+
+    command = [cluster.raft_node, "--id", str(follower),
+               "--config", str(cluster.config_path),
+               "--data-dir", str(corrupt_dir),
+               "--max-raft-state", str(cluster.max_raft_state)]
+    process = subprocess.Popen(command, text=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        stdout, stderr = process.communicate(timeout=5.0)
+    except subprocess.TimeoutExpired as error:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=3.0)
+        raise AssertionError("checksum-corrupt node did not exit") from error
+    if process.returncode == 0:
+        raise AssertionError("checksum-corrupt node exited successfully")
+    if "checksum" not in stderr.lower():
+        raise AssertionError(
+            f"checksum failure missing from stderr; stdout={stdout!r} stderr={stderr!r}")
+
+
 def main() -> int:
     if not sys.platform.startswith("linux"):
         return 77
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scenario", required=True, choices=["failover"])
+    scenarios = {
+        "failover": scenario_failover,
+        "restart": scenario_restart,
+        "snapshot_restart": scenario_snapshot_restart,
+        "snapshot_catchup": scenario_snapshot_catchup,
+        "wal_tail": scenario_wal_tail,
+    }
+    parser.add_argument("--scenario", required=True, choices=sorted(scenarios))
     parser.add_argument("--raft-node", required=True)
     parser.add_argument("--kvctl", required=True)
     parser.add_argument("--artifact-root", required=True, type=pathlib.Path)
@@ -236,7 +440,7 @@ def main() -> int:
     cluster = RaftCluster(args.raft_node, args.kvctl, artifact_dir)
     success = False
     try:
-        scenario_failover(cluster)
+        scenarios[args.scenario](cluster)
         success = True
         return 0
     finally:
