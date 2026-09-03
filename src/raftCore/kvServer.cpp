@@ -349,7 +349,7 @@ void KvServer::GetStatus(google::protobuf::RpcController *controller,
 
 // 构造阶段只做配置校验和恢复，网络发布由 StartKVServer 显式启动。
 KvServer::KvServer(int me, int maxRaftState, std::filesystem::path configPath,
-                   std::filesystem::path dataDir)
+                   std::filesystem::path dataDir, std::filesystem::path faultPolicy)
     : m_me(me), m_maxRaftState(maxRaftState), m_skipList(6) {
   const auto endpoints = LoadClusterConfig(configPath);
   if (me < 0 || static_cast<std::size_t>(me) >= endpoints.size()) {
@@ -368,7 +368,8 @@ KvServer::KvServer(int me, int maxRaftState, std::filesystem::path configPath,
       servers.push_back(nullptr);
       continue;
     }
-    servers.push_back(std::make_shared<RaftRpcUtil>(endpoints[i].ip, endpoints[i].port));
+    servers.push_back(std::make_shared<RaftRpcUtil>(endpoints[i].ip, endpoints[i].port, m_me,
+                                                    static_cast<int>(i), faultPolicy));
   }
   m_raftNode->init(std::move(servers), m_me, persister, applyChan);
   m_lastSnapShotRaftLogIndex = m_raftNode->GetStatusSnapshot().snapshotIndex;

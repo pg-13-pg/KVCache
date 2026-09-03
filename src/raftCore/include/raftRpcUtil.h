@@ -5,8 +5,11 @@
 #define RAFTRPC_H
 
 #include <cstdint>
+#include <filesystem>
 #include <mutex>
+#include <string>
 #include "raftRPC.pb.h"
+#include "raft_fault_policy.h"
 
 /// @brief 维护当前节点对其他某一个结点的所有rpc发送通信的功能
 // 对于一个raft节点来说，对于任意其他的节点都要维护一个rpc连接，即MprpcChannel
@@ -14,6 +17,9 @@ class RaftRpcUtil {
  private:
   raftRpcProctoc::raftRpc_Stub *stub_;    // raftRpcProctoc
   std::mutex callMutex_;
+  int sourceId_ = -1;
+  int targetId_ = -1;
+  std::filesystem::path faultPolicy_;
 
  public:
   //主动调用其他节点的三个方法,可以按照mit6824来调用，但是别的节点调用自己的好像就不行了，要继承protoc提供的service类才行
@@ -27,6 +33,8 @@ class RaftRpcUtil {
    * @param port  远端端口
    */
   RaftRpcUtil(std::string ip, std::uint16_t port);
+  RaftRpcUtil(std::string ip, std::uint16_t port, int sourceId, int targetId,
+              std::filesystem::path faultPolicy = {});
   ~RaftRpcUtil();
 };
 

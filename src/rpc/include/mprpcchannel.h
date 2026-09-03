@@ -6,10 +6,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <algorithm>  // 包含 std::generate_n() 和 std::generate() 函数的头文件
+#include <cstddef>
 #include <functional>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <random>  // 包含 std::uniform_int_distribution 类型的头文件
 #include <string>
 #include <unordered_map>
@@ -31,6 +32,9 @@ class MprpcChannel : public google::protobuf::RpcChannel {
   const std::string m_ip;  //保存ip和端口，如果断了可以尝试重连
   const uint16_t m_port;
   const std::chrono::milliseconds m_ioTimeout;
+  std::mutex m_callMutex;
+  bool SendAll(const char* data, std::size_t size);
+  bool RecvExact(char* data, std::size_t size);
   bool newConnect(const char *ip, uint16_t port, string *errMsg);
 };
 

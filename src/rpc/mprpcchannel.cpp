@@ -9,6 +9,7 @@
 #include <cstring>
 #include <string>
 #include "mprpccontroller.h"
+#include "rpc_frame.h"
 #include "rpcheader.pb.h"
 #include "util.h"
 
@@ -18,16 +19,10 @@
 void MprpcChannel::CallMethod(const google::protobuf::MethodDescriptor* method,
                               google::protobuf::RpcController* controller, const google::protobuf::Message* request,
                               google::protobuf::Message* response, google::protobuf::Closure* done) {
-  //没有连接或者连接已经断开，那么就要重新连接呢,会一直不断地重试
-  if (m_clientFd == -1) {
-    std::string errMsg;
-    bool rt = newConnect(m_ip.c_str(), m_port, &errMsg);
-    if (!rt) {
-      controller->SetFailed(errMsg);
-      return;
-    }
-  }
-
+  struct DoneRunner {
+    google::protobuf::Closure* done;
+    ~DoneRunner() { if (done != nullptr) done->Run(); }
+  } doneRunner{done};
   const google::protobuf::ServiceDescriptor* sd = method->service();//method为方法的描述
   std::string service_name = sd->name();     // service_name
   std::string method_name = method->name();  // method_name
@@ -67,31 +62,50 @@ void MprpcChannel::CallMethod(const google::protobuf::MethodDescriptor* method,
   // 最后，将请求参数附加到send_rpc_str后面
    send_rpc_str += args_str;
 
-  std::size_t sent = 0;
-  while (sent < send_rpc_str.size()) {
-    const auto result = send(m_clientFd, send_rpc_str.data() + sent,
-                             send_rpc_str.size() - sent, MSG_NOSIGNAL);
-    if (result > 0) {
-      sent += static_cast<std::size_t>(result);
-      continue;
+  const std::string framed_request = mprpc::EncodeRpcFrame(send_rpc_str);
+  // The socket is a request/response stream, so network I/O remains serialized;
+  // request encoding above does not need to block other callers.
+  std::lock_guard<std::mutex> lock(m_callMutex);
+  // Connection establishment also touches the shared descriptor and must be
+  // serialized with the request/response transaction.
+  if (m_clientFd == -1) {
+    std::string errMsg;
+    bool rt = newConnect(m_ip.c_str(), m_port, &errMsg);
+    if (!rt) {
+      controller->SetFailed(errMsg);
+      return;
     }
-    if (result < 0 && errno == EINTR) continue;
+  }
+  if (!SendAll(framed_request.data(), framed_request.size())) {
     const std::string error = "send failed: " + std::string(std::strerror(errno));
     close(m_clientFd);
     m_clientFd = -1;
     controller->SetFailed(error);
     return;
   }
- 
-  // 接收rpc请求的响应值
-  char recv_buf[1024] = {0};
-  int recv_size = 0;
-  do {
-    recv_size = recv(m_clientFd, recv_buf, sizeof(recv_buf), 0);
-  } while (recv_size < 0 && errno == EINTR);
-  if (recv_size <= 0) {
-    const std::string error = recv_size == 0
+
+  // Read the response frame prefix and body exactly. TCP may fragment either.
+  std::uint32_t network_length = 0;
+  if (!RecvExact(reinterpret_cast<char*>(&network_length), sizeof(network_length))) {
+    const std::string error = errno == 0
                                   ? "connection closed before RPC response"
+                                  : "receive failed: " + std::string(std::strerror(errno));
+    close(m_clientFd);
+    m_clientFd = -1;
+    controller->SetFailed(error);
+    return;
+  }
+  const std::uint32_t response_size = ntohl(network_length);
+  if (response_size > mprpc::kMaxRpcFrameSize) {
+    close(m_clientFd);
+    m_clientFd = -1;
+    controller->SetFailed("RPC response frame is oversized");
+    return;
+  }
+  std::string response_payload(response_size, '\0');
+  if (!RecvExact(response_payload.data(), response_payload.size())) {
+    const std::string error = errno == 0
+                                  ? "connection closed before complete RPC response"
                                   : "receive failed: " + std::string(std::strerror(errno));
     close(m_clientFd);
     m_clientFd = -1;
@@ -100,12 +114,42 @@ void MprpcChannel::CallMethod(const google::protobuf::MethodDescriptor* method,
   }
 
   // 反序列化rpc调用的响应数据存入response
-  if (!response->ParseFromArray(recv_buf, recv_size)) {
+  if (!response->ParseFromString(response_payload)) {
     close(m_clientFd);
     m_clientFd = -1;
     controller->SetFailed("parse RPC response failed");
     return;
   }
+}
+
+bool MprpcChannel::SendAll(const char* data, std::size_t size) {
+  std::size_t sent = 0;
+  while (sent < size) {
+    errno = 0;
+    const ssize_t result = send(m_clientFd, data + sent, size - sent, MSG_NOSIGNAL);
+    if (result > 0) {
+      sent += static_cast<std::size_t>(result);
+      continue;
+    }
+    if (result < 0 && errno == EINTR) continue;
+    return false;
+  }
+  return true;
+}
+
+bool MprpcChannel::RecvExact(char* data, std::size_t size) {
+  std::size_t received = 0;
+  while (received < size) {
+    errno = 0;
+    const ssize_t result = recv(m_clientFd, data + received, size - received, 0);
+    if (result > 0) {
+      received += static_cast<std::size_t>(result);
+      continue;
+    }
+    if (result < 0 && errno == EINTR) continue;
+    return false;
+  }
+  return true;
 }
 
 //创建一个 TCP socket，并连接到指定的 RPC 服务端 ip:port，连接成功后把 fd 保存到 m_clientFd。
@@ -193,10 +237,10 @@ MprpcChannel::MprpcChannel(std::string ip, std::uint16_t port, bool connectNow,
     return;
   }  
   std::string errMsg;
-  auto rt = newConnect(ip.c_str(), port, &errMsg);
+  auto rt = newConnect(m_ip.c_str(), m_port, &errMsg);
   int tryCount = 3;//重试三次
   while (!rt && tryCount--) {
     std::cout << errMsg << std::endl;
-    rt = newConnect(ip.c_str(), port, &errMsg);
+    rt = newConnect(m_ip.c_str(), m_port, &errMsg);
   }
 }

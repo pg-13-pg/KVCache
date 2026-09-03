@@ -1,8 +1,28 @@
 #include "rpcprovider.h"
+#include <arpa/inet.h>
 #include <cstring>
 #include <string>
 #include "rpcheader.pb.h"
+#include "rpc_frame.h"
 #include "util.h"
+
+namespace {
+
+class OneShotClosure final : public google::protobuf::Closure {
+ public:
+  explicit OneShotClosure(std::function<void()> callback) : callback_(std::move(callback)) {}
+
+  void Run() override {
+    auto callback = std::move(callback_);
+    delete this;
+    callback();
+  }
+
+ private:
+  std::function<void()> callback_;
+};
+
+}  // namespace
 /*
 service_name =>  service描述
                         =》 service* 记录服务对象
@@ -69,85 +89,87 @@ data：header_size(4个字节) + header_str + args_str
 */
 // 已建立连接用户的读写事件回调：解析请求，根据服务名，方法名，参数，来调用service的来callmethod来调用本地的业务
 void RpcProvider::OnMessage(const muduo::net::TcpConnectionPtr &conn, muduo::net::Buffer *buffer, muduo::Timestamp) {
-  std::string recv_buf = buffer->retrieveAllAsString();// 网络上接收的远程rpc调用请求的字符流
-  // 使用protobuf的CodedInputStream来解析数据流
-  google::protobuf::io::ArrayInputStream array_input(recv_buf.data(), recv_buf.size());
-  google::protobuf::io::CodedInputStream coded_input(&array_input);
-  uint32_t header_size{};
-  coded_input.ReadVarint32(&header_size);  // 解析header_size
-
-  // 根据header_size读取数据头的原始字符流，反序列化数据，得到rpc请求的详细信息
-  std::string rpc_header_str; //保存原始 header 字符串
-  RPC::RpcHeader rpcHeader;
-  std::string service_name;
-  std::string method_name;
-
-  // 设置读取限制，不必担心数据读多
-  google::protobuf::io::CodedInputStream::Limit msg_limit = coded_input.PushLimit(header_size);
-  coded_input.ReadString(&rpc_header_str, header_size);
-  // 恢复之前的限制，以便安全地继续读取其他数据
-  coded_input.PopLimit(msg_limit);
-  uint32_t args_size{};
-  if (rpcHeader.ParseFromString(rpc_header_str)) {
-    // 数据头反序列化成功
-    service_name = rpcHeader.service_name();
-    method_name = rpcHeader.method_name();
-    args_size = rpcHeader.args_size();
-  } else {
-    // 数据头反序列化失败
-    std::cout << "rpc_header_str:" << rpc_header_str << " parse error!" << std::endl;
-    return;
-  }
-  // 获取rpc方法参数的字符流数据
-  std::string args_str;
-  // 直接读取args_size长度的字符串数据
-  bool read_args_success = coded_input.ReadString(&args_str, args_size);
-
-  if (!read_args_success) {
-    // 处理错误：参数数据读取失败
-    return;
-  }
-
-  // 获取service对象和method对象
-  auto it = m_serviceMap.find(service_name);
-  if (it == m_serviceMap.end()) {
-    std::cout << "服务：" << service_name << " is not exist!" << std::endl;
-    std::cout << "当前已经有的服务列表为:";
-    for (auto item : m_serviceMap) {
-      std::cout << item.first << " ";
+  while (true) {
+    if (buffer->readableBytes() >= sizeof(std::uint32_t)) {
+      std::uint32_t networkLength = 0;
+      std::memcpy(&networkLength, buffer->peek(), sizeof(networkLength));
+      if (ntohl(networkLength) > mprpc::kMaxRpcFrameSize) {
+        std::cout << "rpc frame exceeds maximum size" << std::endl;
+        conn->forceClose();
+        return;
+      }
     }
-    std::cout << std::endl;
-    return;
+
+    std::string recvBuf;
+    if (!mprpc::TryConsumeRpcFrame(buffer, &recvBuf)) return;
+
+    google::protobuf::io::ArrayInputStream arrayInput(recvBuf.data(), recvBuf.size());
+    google::protobuf::io::CodedInputStream codedInput(&arrayInput);
+    uint32_t headerSize{};
+    if (!codedInput.ReadVarint32(&headerSize)) {
+      std::cout << "rpc request header length parse error" << std::endl;
+      conn->forceClose();
+      return;
+    }
+
+    std::string rpcHeaderStr;
+    const auto headerLimit = codedInput.PushLimit(headerSize);
+    if (!codedInput.ReadString(&rpcHeaderStr, headerSize)) {
+      std::cout << "rpc header read error" << std::endl;
+      conn->forceClose();
+      return;
+    }
+    codedInput.PopLimit(headerLimit);
+
+    RPC::RpcHeader rpcHeader;
+    if (!rpcHeader.ParseFromString(rpcHeaderStr)) {
+      std::cout << "rpc header parse error" << std::endl;
+      conn->forceClose();
+      return;
+    }
+
+    std::string argsStr;
+    if (!codedInput.ReadString(&argsStr, rpcHeader.args_size())) {
+      std::cout << "rpc request arguments read error" << std::endl;
+      conn->forceClose();
+      return;
+    }
+    if (codedInput.CurrentPosition() != static_cast<int>(recvBuf.size())) {
+      std::cout << "rpc request has trailing data" << std::endl;
+      conn->forceClose();
+      return;
+    }
+
+    auto serviceIt = m_serviceMap.find(rpcHeader.service_name());
+    if (serviceIt == m_serviceMap.end()) {
+      std::cout << "service " << rpcHeader.service_name() << " does not exist" << std::endl;
+      conn->forceClose();
+      return;
+    }
+    auto methodIt = serviceIt->second.m_methodMap.find(rpcHeader.method_name());
+    if (methodIt == serviceIt->second.m_methodMap.end()) {
+      std::cout << "method " << rpcHeader.method_name() << " does not exist" << std::endl;
+      conn->forceClose();
+      return;
+    }
+
+    google::protobuf::Service *service = serviceIt->second.m_service;
+    const google::protobuf::MethodDescriptor *method = methodIt->second;
+    google::protobuf::Message *request = service->GetRequestPrototype(method).New();
+    if (!request->ParseFromString(argsStr)) {
+      std::cout << "rpc request parse error" << std::endl;
+      conn->forceClose();
+      delete request;
+      return;
+    }
+    google::protobuf::Message *response = service->GetResponsePrototype(method).New();
+    google::protobuf::Closure *done = new OneShotClosure([this, conn, request, response] {
+      SendRpcResponse(conn, response);
+      delete response;
+      delete request;
+    });
+    service->CallMethod(method, nullptr, request, response, done);
   }
-
-  auto mit = it->second.m_methodMap.find(method_name);
-  if (mit == it->second.m_methodMap.end()) {
-    std::cout << service_name << ":" << method_name << " is not exist!" << std::endl;
-    return;
-  }
-
-  google::protobuf::Service *service = it->second.m_service;       // 获取service对象 
-  const google::protobuf::MethodDescriptor *method = mit->second;  // 获取method对象 
-
-  // 生成rpc方法调用的请求request和响应response参数,由于是rpc的请求，因此请求需要通过request来序列化
-  google::protobuf::Message *request = service->GetRequestPrototype(method).New();//生成对应方法的请求对象
-  if (!request->ParseFromString(args_str)) {
-    std::cout << "request parse error, content:" << args_str << std::endl;
-    return;
-  }
-  google::protobuf::Message *response = service->GetResponsePrototype(method).New();//生成对应方法的响应对象
-
-  // 给下面的method方法的调用，绑定一个Closure的回调函数
-  // closure是执行完本地方法之后会发生的回调，因此需要完成序列化和反向发送请求的操作
-  google::protobuf::Closure *done =
-      google::protobuf::NewCallback<RpcProvider, const muduo::net::TcpConnectionPtr &, google::protobuf::Message *>(
-          this, &RpcProvider::SendRpcResponse, conn, response); //this->PpcProvider::SendRpcResponse(conn, response) 
-
-  // 用户注册的service类(KvServer) 继承 .protoc生成的serviceRpc类 继承 google::protobuf::Service
-  // 用户注册的service类里面没有重写CallMethod方法，是 .protoc生成的serviceRpc类 里面重写了google::protobuf::Service中
-  //的纯虚函数CallMethod，而 .protoc生成的serviceRpc类 会根据传入参数自动调取 生成的xx方法（如Login方法），
-  //由于xx方法被 用户注册的service类重写了，因此这个方法运行的时候会调用 用户注册的service类 的xx方法
-  service->CallMethod(method, nullptr, request, response, done); 
 }
 
 // Closure的回调操作，用于序列化rpc的响应和网络发送,发送响应回去
@@ -155,7 +177,12 @@ void RpcProvider::SendRpcResponse(const muduo::net::TcpConnectionPtr &conn, goog
   std::string response_str;
   if (response->SerializeToString(&response_str))  // response进行序列化
   {
-    conn->send(response_str);// 序列化成功后，通过网络把rpc方法执行的结果发送会rpc的调用方
+    if (response_str.size() > mprpc::kMaxRpcFrameSize) {
+      std::cout << "rpc response exceeds maximum size" << std::endl;
+      conn->forceClose();
+    } else {
+      conn->send(mprpc::EncodeRpcFrame(response_str));// 序列化成功后，通过网络把rpc方法执行的结果发送会rpc的调用方
+    }
   } else {
     std::cout << "serialize response_str error!" << std::endl;
   }

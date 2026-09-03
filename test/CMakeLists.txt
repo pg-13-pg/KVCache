@@ -36,6 +36,25 @@ target_link_libraries(test_status_proto PRIVATE protobuf)
 add_test(NAME status_proto COMMAND $<TARGET_FILE:test_status_proto>)
 set_tests_properties(status_proto PROPERTIES TIMEOUT 5)
 
+add_executable(rpc_frame_test rpc_frame_test.cpp
+  ../src/rpc/rpc_frame.cpp
+  ../src/rpc/mprpcchannel.cpp
+  ../src/rpc/mprpccontroller.cpp
+  ../src/rpc/rpcheader.pb.cc
+  ../src/raftRpcPro/kvServerRPC.pb.cc)
+target_link_libraries(rpc_frame_test PRIVATE muduo_net muduo_base protobuf boost_serialization pthread)
+add_test(NAME rpc_frame_test COMMAND $<TARGET_FILE:rpc_frame_test>)
+set_tests_properties(rpc_frame_test PROPERTIES TIMEOUT 5)
+
+add_executable(raft_append_entries_test raft_append_entries_test.cpp ${src_common})
+target_link_libraries(raft_append_entries_test PRIVATE skip_list_on_raft boost_serialization protobuf pthread fiber_lib dl)
+add_test(NAME raft_append_entries_test COMMAND $<TARGET_FILE:raft_append_entries_test>)
+set_tests_properties(raft_append_entries_test PROPERTIES TIMEOUT 10)
+
+add_executable(raft_fault_policy_test raft_fault_policy_test.cpp ../src/raftCore/raft_fault_policy.cpp)
+add_test(NAME raft_fault_policy_test COMMAND $<TARGET_FILE:raft_fault_policy_test>)
+set_tests_properties(raft_fault_policy_test PROPERTIES TIMEOUT 5)
+
 add_executable(test_cluster_config cluster_config.cpp ${src_common})
 target_link_libraries(test_cluster_config PRIVATE boost_serialization)
 add_test(NAME cluster_config COMMAND $<TARGET_FILE:test_cluster_config>)
@@ -73,6 +92,7 @@ if(Python3_Interpreter_FOUND)
   add_raft_integration_test(raft_integration_snapshot_restart snapshot_restart)
   add_raft_integration_test(raft_integration_snapshot_catchup snapshot_catchup)
   add_raft_integration_test(raft_integration_wal_tail wal_tail)
+  add_raft_integration_test(raft_cluster_transport_faults transport_faults)
 else()
   message(STATUS "Python 3 not found: Raft integration tests unavailable")
 endif()

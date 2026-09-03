@@ -14,11 +14,12 @@ struct Arguments {
   int maxRaftState = -1;
   std::filesystem::path config;
   std::filesystem::path dataDir;
+  std::filesystem::path raftFaultFile;
 };
 
 void PrintUsage(std::ostream& output) {
   output << "Usage: raftNode --id N --config PATH --data-dir PATH "
-            "--max-raft-state BYTES\n";
+            "--max-raft-state BYTES [--raft-fault-file PATH]\n";
 }
 
 int ParseInteger(std::string_view value, const char* option) {
@@ -52,6 +53,8 @@ Arguments ParseArguments(int argc, char** argv) {
     } else if (option == "--max-raft-state") {
       args.maxRaftState = ParseInteger(value, "--max-raft-state");
       hasMaxRaftState = true;
+    } else if (option == "--raft-fault-file") {
+      args.raftFaultFile = value;
     } else {
       throw std::runtime_error("unknown option: " + option);
     }
@@ -71,7 +74,7 @@ Arguments ParseArguments(int argc, char** argv) {
 int main(int argc, char** argv) {
   try {
     const auto args = ParseArguments(argc, argv);
-    KvServer server(args.id, args.maxRaftState, args.config, args.dataDir);
+    KvServer server(args.id, args.maxRaftState, args.config, args.dataDir, args.raftFaultFile);
     server.StartKVServer();
     return 0;
   } catch (const std::exception& error) {

@@ -1,0 +1,24 @@
+# KVCache Linux build and test dependencies
+# Target distribution: Ubuntu/Debian
+# One package name per line; comments and blank lines are ignored.
+
+build-essential
+cmake
+git
+pkg-config
+ca-certificates
+
+protobuf-compiler
+libprotobuf-dev
+
+libboost-dev
+libboost-serialization-dev
+
+python3
+procps
+iproute2
+
+# GCC 11+ and CMake 3.22+ are recommended for the C++20 build.
+# pthread and libdl are provided by glibc/toolchain.
+# Muduo is built from source by scripts/install_dependencies.sh and installed
+# under /usr/local/include and /usr/local/lib, matching CMakeLists.txt.

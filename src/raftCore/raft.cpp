@@ -9,6 +9,19 @@
 void Raft::AppendEntries1(const raftRpcProctoc::AppendEntriesArgs* args, raftRpcProctoc::AppendEntriesReply* reply) {
   std::lock_guard<std::mutex> locker(m_mtx);
   reply->set_appstate(AppNormal);  // 能接收到代表网络是正常的
+  // Reject malformed batches before changing term, role, logs, or commit state.
+  // A valid AppendEntries suffix starts immediately after prevLogIndex and is
+  // wholly newer than the installed snapshot.
+  for (int i = 0; i < args->entries_size(); ++i) {
+    const auto& entry = args->entries(i);
+    const long long expectedIndex = static_cast<long long>(args->prevlogindex()) + i + 1;
+    if (entry.logindex() != expectedIndex || entry.logindex() <= m_lastSnapshotIncludeIndex) {
+      reply->set_success(false);
+      reply->set_term(m_currentTerm);
+      reply->set_updatenextindex(m_lastSnapshotIncludeIndex + 1);
+      return;
+    }
+  }
   //	不同的人收到AppendEntries的反应是不同的，要注意无论什么时候收到rpc请求和响应都要检查term
   if (args->term() < m_currentTerm) {
     reply->set_success(false);
@@ -50,7 +63,7 @@ void Raft::AppendEntries1(const raftRpcProctoc::AppendEntriesArgs* args, raftRpc
     reply->set_success(false);
     reply->set_term(m_currentTerm);
     reply->set_updatenextindex(m_lastSnapshotIncludeIndex +1); // 你至少从 snapshot 后面的第一条日志开始试。
-    //return;
+    return;
   }
 
   //	本机日志有那么长，冲突(same index,different term),截断日志
@@ -62,31 +75,38 @@ void Raft::AppendEntries1(const raftRpcProctoc::AppendEntriesArgs* args, raftRpc
     // 3. leader如何处理
     //leader  123 456（entries）  follower 12345678  456已经存在follower中，leader发来的456是旧的，follower应该直接忽略掉，而不是截断掉follower的日志
     for (int i = 0; i < args->entries_size(); i++) {
-      auto log = args->entries(i);
+      const auto& log = args->entries(i);
       if (log.logindex() > getLastLogIndex()) {//leader更新日志比follwer最新日志LastLogIndex新
-        
-        m_logs.push_back(log);
+        m_logs.insert(m_logs.end(), args->entries().begin() + i, args->entries().end());
         persistentStateChanged = true;
-      } else {//这条日志的 index follower 已经拥有
-        // todo ： 这里可以改进为比较对应logIndex位置的term是否相等，term相等就代表匹配
-        //  todo：这个地方放出来会出问题,按理说index相同，term相同，log也应该相同才对
-        // rf.logs[entry.Index-firstIndex].Term ?= entry.Term
-        //1.term不匹配就更新 2.term相同但是command不匹配就异常了 3.term和command匹配不进行操作
-        if (m_logs[getSlicesIndexFromLogIndex(log.logindex())].logterm() == log.logterm() &&
-            m_logs[getSlicesIndexFromLogIndex(log.logindex())].command() != log.command()) {
-          //相同位置的log ，其logTerm相等，但是命令却不相同，不符合raft的前向匹配，异常了！
-          myAssert(false, format("[func-AppendEntries-rf{%d}] 两节点logIndex{%d}和term{%d}相同，但是其command{%d:%d}   "
-                                 " {%d:%d}却不同！！\n",
-                                 m_me, log.logindex(), log.logterm(), m_me,
-                                 m_logs[getSlicesIndexFromLogIndex(log.logindex())].command(), args->leaderid(),
-                                 log.command()));
-        }
-        if (m_logs[getSlicesIndexFromLogIndex(log.logindex())].logterm() != log.logterm()) {
-          //term不匹配就更新
-          m_logs[getSlicesIndexFromLogIndex(log.logindex())] = log;
-          persistentStateChanged = true;
-        }
+        break;
       }
+
+      const auto localIndex = getSlicesIndexFromLogIndex(log.logindex());
+      auto& localLog = m_logs[localIndex];
+      if (localLog.logterm() == log.logterm()) {
+        // Same index and term must identify the same command.
+        myAssert(localLog.command() == log.command(),
+                 format("[func-AppendEntries-rf{%d}] 两节点logIndex{%d}和term{%d}相同，但是命令却不同！！\n",
+                        m_me, log.logindex(), log.logterm()));
+        continue;
+      }
+
+      // A committed entry must never be overwritten, even if a malformed or
+      // stale leader message presents a conflicting term.
+      if (log.logindex() <= m_commitIndex) {
+        reply->set_success(false);
+        reply->set_term(m_currentTerm);
+        reply->set_updatenextindex(m_commitIndex + 1);
+        return;
+      }
+
+      // The first term conflict invalidates this entry and every local suffix
+      // after it. Append the leader's remaining suffix as one contiguous range.
+      m_logs.erase(m_logs.begin() + localIndex, m_logs.end());
+      m_logs.insert(m_logs.end(), args->entries().begin() + i, args->entries().end());
+      persistentStateChanged = true;
+      break;
     }
     //这次 AppendEntries 覆盖到的最后一个日志 index。
     myAssert(

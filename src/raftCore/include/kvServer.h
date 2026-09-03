@@ -44,7 +44,7 @@ class KvServer : raftKVRpcProctoc::kvServerRpc {
  public:
   KvServer() = delete;
   KvServer(int me, int maxRaftState, std::filesystem::path configPath,
-           std::filesystem::path dataDir);
+           std::filesystem::path dataDir, std::filesystem::path faultPolicy = {});
 
   void StartKVServer();
   void DprintfKVDB();
