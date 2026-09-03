@@ -28,6 +28,35 @@ KVCache 是一个基于 Raft 的分布式键值存储实验项目。多个进程
 - pthread 和 dl
 - Python 3（运行多节点集成测试）
 
+### 一键安装依赖
+
+在 Ubuntu/Debian 云服务器上，推荐直接运行仓库中的安装脚本。脚本会读取
+`environment-dependencies.txt` 安装系统依赖，检查编译工具，并从 Muduo
+源码编译安装 `muduo_net` 和 `muduo_base` 到 `/usr/local`。非 root 用户需要
+具备 `sudo` 权限。
+
+~~~bash
+chmod +x scripts/install_dependencies.sh
+./scripts/install_dependencies.sh
+~~~
+
+脚本默认使用 Muduo 的 `master` 分支；如需固定版本，可以指定 tag 或分支：
+
+~~~bash
+./scripts/install_dependencies.sh --muduo-ref <tag-or-branch>
+~~~
+
+如果系统已经通过其他方式安装了 Muduo，或只想安装 apt 软件包，可以跳过
+Muduo 编译步骤：
+
+~~~bash
+./scripts/install_dependencies.sh --skip-muduo
+~~~
+
+脚本只支持 Ubuntu/Debian，并会调用 `apt-get update` 和 `apt-get install`，
+执行前请确认服务器可以访问软件源和 GitHub。安装完成后继续执行下面的编译
+步骤即可。
+
 Ubuntu/Debian 可以先安装常见依赖：
 
 ~~~bash
