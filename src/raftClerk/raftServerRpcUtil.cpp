@@ -6,7 +6,9 @@
 raftServerRpcUtil::raftServerRpcUtil(std::string ip, std::uint16_t port,
                                      std::chrono::milliseconds ioTimeout) {
  
-  stub = new raftKVRpcProctoc::kvServerRpc_Stub(new MprpcChannel(ip, port, false, ioTimeout));
+  stub = new raftKVRpcProctoc::kvServerRpc_Stub(
+      new MprpcChannel(ip, port, false, ioTimeout),
+      google::protobuf::Service::STUB_OWNS_CHANNEL);
 }
 
 raftServerRpcUtil::~raftServerRpcUtil() { delete stub; }

@@ -9,8 +9,10 @@ include(CTest)
 
 
 set(CMAKE_CXX_STANDARD 20)
-# 生成debug版本，可以进行gdb调试
-set(CMAKE_BUILD_TYPE "Debug")
+# 未指定时默认生成 Debug；允许调用方选择 Release 或其他配置。
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Debug")
+endif()
 
 # 设置项目可执行文件输出的路径
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)

@@ -8,8 +8,8 @@ void KvServer::DprintfKVDB() {
   if (!Debug) {
     return;
   }
-  std::lock_guard<std::mutex> lg(m_mtx);
-  DEFER {m_skipList.display_list();};
+  // Dumping the entire Skip List after every request makes Debug mode
+  // unusable under load. Per-request apply logs already record the mutation.
 }
 
 void KvServer::ExecuteAppendOpOnKVDB(Op op) {
@@ -127,7 +127,8 @@ void KvServer::GetCommandFromRaft(ApplyMsg message) {
   DPrintf(
       "[KvServer::GetCommandFromRaft-kvserver{%d}] , Got Command --> Index:{%d} , ClientId {%s}, RequestId {%d}, "
       "Opreation {%s}, Key :{%s}, Value :{%s}",
-      m_me, message.CommandIndex, &op.ClientId, op.RequestId, &op.Operation, &op.Key, &op.Value);
+      m_me, message.CommandIndex, op.ClientId.c_str(), op.RequestId, op.Operation.c_str(), op.Key.c_str(),
+      op.Value.c_str());
   if (message.CommandIndex <= m_lastSnapShotRaftLogIndex) {
     return;
   }
@@ -184,7 +185,7 @@ void KvServer::PutAppend(const raftKVRpcProctoc::PutAppendArgs *args, raftKVRpcP
     DPrintf(
         "[func -KvServer::PutAppend -kvserver{%d}]From Client %s (Request %d) To Server %d, key %s, raftIndex %d , but "
         "not leader",
-        m_me, &args->clientid(), args->requestid(), m_me, &op.Key, raftIndex);
+        m_me, args->clientid().c_str(), args->requestid(), m_me, op.Key.c_str(), raftIndex);
 
     reply->set_err(ErrWrongLeader);
     return;
@@ -192,7 +193,7 @@ void KvServer::PutAppend(const raftKVRpcProctoc::PutAppendArgs *args, raftKVRpcP
   DPrintf(
       "[func -KvServer::PutAppend -kvserver{%d}]From Client %s (Request %d) To Server %d, key %s, raftIndex %d , is "
       "leader ",
-      m_me, &args->clientid(), args->requestid(), m_me, &op.Key, raftIndex);
+      m_me, args->clientid().c_str(), args->requestid(), m_me, op.Key.c_str(), raftIndex);
 
   m_mtx.lock();
   if (waitApplyCh.find(raftIndex) == waitApplyCh.end()) { 
@@ -205,8 +206,9 @@ void KvServer::PutAppend(const raftKVRpcProctoc::PutAppendArgs *args, raftKVRpcP
   if (!chForRaftIndex->timeOutPop(CONSENSUS_TIMEOUT, &raftCommitOp)) { //阻塞
     DPrintf(
         "[func -KvServer::PutAppend -kvserver{%d}]TIMEOUT PUTAPPEND !!!! Server %d , get Command <-- Index:%d , "
-        "ClientId %s, RequestId %s, Opreation %s Key :%s, Value :%s",
-        m_me, m_me, raftIndex, &op.ClientId, op.RequestId, &op.Operation, &op.Key, &op.Value);
+        "ClientId %s, RequestId %d, Operation %s, Key :%s, Value :%s",
+        m_me, m_me, raftIndex, op.ClientId.c_str(), op.RequestId, op.Operation.c_str(), op.Key.c_str(),
+        op.Value.c_str());
 
     if (ifRequestDuplicate(op.ClientId, op.RequestId)) {
       reply->set_err(OK);  // 超时了,但因为是重复的请求，返回ok，实际上就算没有超时，在真正执行的时候也要判断是否重复
@@ -217,7 +219,8 @@ void KvServer::PutAppend(const raftKVRpcProctoc::PutAppendArgs *args, raftKVRpcP
     DPrintf(
         "[func -KvServer::PutAppend -kvserver{%d}]WaitChanGetRaftApplyMessage<--Server %d , get Command <-- Index:%d , "
         "ClientId %s, RequestId %d, Opreation %s, Key :%s, Value :%s",
-        m_me, m_me, raftIndex, &op.ClientId, op.RequestId, &op.Operation, &op.Key, &op.Value);
+        m_me, m_me, raftIndex, op.ClientId.c_str(), op.RequestId, op.Operation.c_str(), op.Key.c_str(),
+        op.Value.c_str());
     if (raftCommitOp.ClientId == op.ClientId && raftCommitOp.RequestId == op.RequestId) {
       //可能发生leader的变更导致日志被覆盖，因此必须检查
       reply->set_err(OK);
@@ -265,18 +268,18 @@ void KvServer::ReadSnapShotToInstall(std::string snapshot) {
 bool KvServer::SendMessageToWaitChan(const Op &op, int raftIndex) {
   std::lock_guard<std::mutex> lg(m_mtx);
   DPrintf(
-      "[RaftApplyMessageSendToWaitChan--> raftserver{%d}] , Send Command --> Index:{%d} , ClientId {%d}, RequestId "
-      "{%d}, Opreation {%v}, Key :{%v}, Value :{%v}",
-      m_me, raftIndex, &op.ClientId, op.RequestId, &op.Operation, &op.Key, &op.Value);
+      "[RaftApplyMessageSendToWaitChan--> raftserver{%d}] Send Command --> Index:{%d} ClientId {%s}, RequestId "
+      "{%d}, Operation {%s}, Key :{%s}, Value :{%s}",
+      m_me, raftIndex, op.ClientId.c_str(), op.RequestId, op.Operation.c_str(), op.Key.c_str(), op.Value.c_str());
 
   if (waitApplyCh.find(raftIndex) == waitApplyCh.end()) {
     return false;
   }
   waitApplyCh[raftIndex]->Push(op);//push Op 到对应raftIndex的等待队列里，唤醒正在等结果的
   DPrintf(
-      "[RaftApplyMessageSendToWaitChan--> raftserver{%d}] , Send Command --> Index:{%d} , ClientId {%d}, RequestId "
-      "{%d}, Opreation {%v}, Key :{%v}, Value :{%v}",
-      m_me, raftIndex, &op.ClientId, op.RequestId, &op.Operation, &op.Key, &op.Value);
+      "[RaftApplyMessageSendToWaitChan--> raftserver{%d}] Send Command --> Index:{%d} ClientId {%s}, RequestId "
+      "{%d}, Operation {%s}, Key :{%s}, Value :{%s}",
+      m_me, raftIndex, op.ClientId.c_str(), op.RequestId, op.Operation.c_str(), op.Key.c_str(), op.Value.c_str());
   return true;
 }
 
@@ -350,13 +353,13 @@ void KvServer::GetStatus(google::protobuf::RpcController *controller,
 // 构造阶段只做配置校验和恢复，网络发布由 StartKVServer 显式启动。
 KvServer::KvServer(int me, int maxRaftState, std::filesystem::path configPath,
                    std::filesystem::path dataDir, std::filesystem::path faultPolicy)
-    : m_me(me), m_maxRaftState(maxRaftState), m_skipList(6) {
+    : m_me(me), m_maxRaftState(maxRaftState), m_skipList(6), m_dataDir(std::move(dataDir)) {
   const auto endpoints = LoadClusterConfig(configPath);
   if (me < 0 || static_cast<std::size_t>(me) >= endpoints.size()) {
     throw std::runtime_error("node id is outside cluster config: " + std::to_string(me));
   }
   m_endpoint = endpoints[static_cast<std::size_t>(me)];
-  auto persister = std::make_shared<Persister>(std::move(dataDir));
+  auto persister = std::make_shared<Persister>(m_dataDir);
 
   applyChan = std::make_shared<LockQueue<ApplyMsg> >();
   m_raftNode = std::make_shared<Raft>();
@@ -382,8 +385,27 @@ KvServer::KvServer(int me, int maxRaftState, std::filesystem::path configPath,
 
 void KvServer::StartKVServer() {
   m_raftNode->StartBackgroundTasks();
+  std::thread(&KvServer::WritePeriodicStatusLog, this).detach();
   RpcProvider provider;
   provider.NotifyService(this);
   provider.NotifyService(m_raftNode.get());
   provider.Run(m_endpoint.ip, m_endpoint.port);
+}
+
+void KvServer::WritePeriodicStatusLog() {
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    const auto status = m_raftNode->GetStatusSnapshot();
+    std::error_code error;
+    const auto walBytes = std::filesystem::file_size(m_dataDir / "raft.wal", error);
+    const char* role = status.role == RaftRole::Leader ? "LEADER" :
+                       status.role == RaftRole::Candidate ? "CANDIDATE" : "FOLLOWER";
+    std::cout << "[status] node_id=" << m_me
+              << " term=" << status.term
+              << " role=" << role
+              << " commit_index=" << status.commitIndex
+              << " last_applied=" << status.lastApplied
+              << " snapshot_index=" << status.snapshotIndex
+              << " wal_bytes=" << (error ? 0 : walBytes) << std::endl;
+  }
 }

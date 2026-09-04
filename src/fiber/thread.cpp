@@ -16,13 +16,18 @@ Thread::Thread(std::function<void()> cb, const std::string &name = "UNKNOW") : c
     std::cout << "pthread_create error,name:" << name_ << std::endl;
     throw std::logic_error("pthread_create");
   }
+  // Scheduler reads id_ immediately after construction; wait until the
+  // child thread has published it to establish a happens-before edge.
+  while (id_.load(std::memory_order_acquire) == 0) {
+    std::this_thread::yield();
+  }
 }
 
 void *Thread::run(void *arg) {
   Thread *thread = (Thread *)arg;  //arg ：this
   cur_thread = thread;
   cur_thread_name = thread->name_;
-  thread->id_ = monsoon::GetThreadId();
+  thread->id_.store(monsoon::GetThreadId(), std::memory_order_release);
   // 给线程命名
   pthread_setname_np(pthread_self(), thread->name_.substr(0, 15).c_str());
   std::function<void()> cb;

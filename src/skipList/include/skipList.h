@@ -30,8 +30,8 @@ class Node {
   K get_key() const;
   V get_value() const;
   void set_value(V);
-  Node<K, V>** forward;
-  int node_level;
+  Node<K, V>** forward = nullptr;
+  int node_level = 0;
 
  private:
   K key;
@@ -40,7 +40,9 @@ class Node {
 
 template <typename K, typename V>
 Node<K, V>::Node(const K k, const V v, int level)
-    : forward(new Node<K, V>*[level + 1]), node_level(level), key(k), value(v) {
+    : forward(nullptr), node_level(level), key(k), value(v) {
+  // Allocate after key/value copies so an exception cannot leak the array.
+  forward = new Node<K, V>*[level + 1];
   memset(forward, 0, sizeof(Node<K, V>*) * (level + 1));
 }
 

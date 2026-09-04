@@ -73,6 +73,10 @@ set_tests_properties(
 
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
+  add_test(NAME scenario_suite_help
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/run_scenario_suite.py --help)
+  set_tests_properties(scenario_suite_help PROPERTIES TIMEOUT 5)
+
   function(add_raft_integration_test test_name scenario_name)
     add_test(
       NAME ${test_name}

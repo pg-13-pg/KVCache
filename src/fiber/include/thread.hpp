@@ -12,13 +12,14 @@
 #include <memory>
 #include <thread>
 
+
 namespace monsoon {
 class Thread {
  public:
   typedef std::shared_ptr<Thread> ptr;
   Thread(std::function<void()> cb, const std::string &name);
   ~Thread();
-  pid_t getId() const { return id_; }
+  pid_t getId() const { return id_.load(std::memory_order_acquire); }
   const std::string &getName() const { return name_; }
   void join();
   static Thread *GetThis();
@@ -33,7 +34,7 @@ class Thread {
   static void *run(void *args);
 
  private:
-  pid_t id_;   //Linux 系统层面的线程 ID
+  std::atomic<pid_t> id_{0};   //Linux 系统层面的线程 ID
   pthread_t thread_;  // POSIX 线程 ID，pthread 库层面的线程句柄
   std::function<void()> cb_;
   std::string name_;

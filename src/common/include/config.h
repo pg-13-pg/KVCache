@@ -5,7 +5,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-const bool Debug = false;
+// Enable verbose Raft/RPC diagnostics during scenario testing.
+const bool Debug = true;
 
 const int debugMul = 1;  // 时间单位：time.Millisecond，不同网络环境rpc速度不同，因此需要乘以一个系数
 const int HeartBeatTimeout = 25 * debugMul;  // 心跳时间一般要比选举超时小一个数量级

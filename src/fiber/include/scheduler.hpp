@@ -131,7 +131,7 @@ class Scheduler {
   Fiber::ptr rootFiber_;
   // use caller = true,调度器协程所在线程的id
   int rootThread_ = 0;
-  bool isStopped_ = false;
+  std::atomic<bool> isStopped_{false};
   bool hookEnabled_ = false;
 };
 }  // namespace monsoon

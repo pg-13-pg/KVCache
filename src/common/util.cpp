@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <ctime>
 #include <iomanip>
+#include <mutex>
 
 void myAssert(bool condition, std::string message) {  //如果条件不满足，输出错误信息并终止程序
   if (!condition) {
@@ -60,6 +61,8 @@ bool isReleasePort(unsigned short usPort) {
 
 void DPrintf(const char *format, ...) {  //
   if (Debug) {
+    static std::mutex logMutex;
+    std::lock_guard<std::mutex> lock(logMutex);
     // 获取当前的日期，然后取日志信息，写入相应的日志文件当中 a+
     time_t now = time(nullptr);
     tm *nowtm = localtime(&now);
@@ -69,6 +72,7 @@ void DPrintf(const char *format, ...) {  //
                 nowtm->tm_min, nowtm->tm_sec);
     std::vprintf(format, args);
     std::printf("\n");
+    std::fflush(stdout);
     va_end(args);
   }
 }

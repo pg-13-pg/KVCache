@@ -61,6 +61,9 @@ class Raft : public raftRpcProctoc::raftRpc {  //raftRPC.proto
   enum Status { Follower, Candidate, Leader };
   Status m_status;  // 身份
 
+  static const char* roleName(Status status);
+  void logStateChangeLocked(const char* reason, int oldTerm, Status oldStatus) const;
+
   std::shared_ptr<LockQueue<ApplyMsg>> applyChan;  // client从这里取日志（2B），client与raft通信的接口
   // ApplyMsgQueue chan ApplyMsg // raft内部使用的chan，applyChan是用于和服务层交互，最后好像没用上
 

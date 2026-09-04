@@ -40,6 +40,7 @@ class KvServer : raftKVRpcProctoc::kvServerRpc {
 
   int m_lastSnapShotRaftLogIndex;   //快照包含的最后一个日志索引
   NodeEndpoint m_endpoint;
+  std::filesystem::path m_dataDir;
 
  public:
   KvServer() = delete;
@@ -47,6 +48,7 @@ class KvServer : raftKVRpcProctoc::kvServerRpc {
            std::filesystem::path dataDir, std::filesystem::path faultPolicy = {});
 
   void StartKVServer();
+  void WritePeriodicStatusLog();
   void DprintfKVDB();
 
   void ExecuteAppendOpOnKVDB(Op op);  //真正操作本地kv数据库的函数

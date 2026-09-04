@@ -244,3 +244,10 @@ MprpcChannel::MprpcChannel(std::string ip, std::uint16_t port, bool connectNow,
     rt = newConnect(m_ip.c_str(), m_port, &errMsg);
   }
 }
+
+MprpcChannel::~MprpcChannel() {
+  if (m_clientFd != -1) {
+    close(m_clientFd);
+    m_clientFd = -1;
+  }
+}

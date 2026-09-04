@@ -14,7 +14,7 @@ bin/*
 
 # Local runtime config
 /test.conf
-
+logs
 # Runtime persistence files
 raftstatePersist*.txt
 snapshotPersist*.txt

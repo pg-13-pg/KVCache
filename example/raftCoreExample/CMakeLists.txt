@@ -16,6 +16,11 @@ add_test(NAME kvctl_invalid COMMAND $<TARGET_FILE:kvctl> invalid)
 set_tests_properties(kvctl_invalid PROPERTIES WILL_FAIL TRUE)
 set_tests_properties(kvctl_help kvctl_invalid PROPERTIES TIMEOUT 5)
 
+add_executable(kvbench kvbench.cpp ${src_raftClerk} ${src_common})
+target_link_libraries(kvbench PRIVATE skip_list_on_raft protobuf boost_serialization pthread)
+add_test(NAME kvbench_help COMMAND $<TARGET_FILE:kvbench> --help)
+set_tests_properties(kvbench_help PROPERTIES TIMEOUT 5)
+
 #################################
 
 set(SRC_LIST2 caller.cpp)
